@@ -1,5 +1,4 @@
 from typing import List
-from typing import Any
 
 import random
 
@@ -14,13 +13,37 @@ class BatchSizeTooLargeError(Exception):
         super().__init__(message)
 
 
+class NotSingleFieldError(Exception):
+    """ When you try to do something to a batch which hasn't be trimmed to a single field"""
+
+
 class Batch(list):
     def __init__(self, list_batch: List[dict]):
         super().__init__(list_batch)
         self.data = list_batch
+        self.__is_single_field = False
 
-    def data_by_field(self, field_name) -> List[Any]:
-        return [line[field_name] for line in self.data]
+    def __str__(self):
+        return self.data.__str__()
+
+    def __repr__(self):
+        return self.data.__repr__()
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+    def data_by_field(self, field_name) -> None:
+        if self.__is_single_field:
+            return None
+
+        self.__is_single_field = True
+        self.data = [line[field_name] for line in self.data]
+
+    def apply(self, func: callable):
+        if self.__is_single_field:
+            self.data = [func(line) for line in self.data]
+        else:
+            raise NotSingleFieldError
 
 
 class SNLI_DataLoader:
@@ -117,6 +140,7 @@ class SNLI_DataLoader:
                 elif r < batch_size / n:
                     loc = random.randint(0, batch_size - 1)
                     buffer[loc] = json.loads(line)
+
         return Batch(buffer)
 
 
