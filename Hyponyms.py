@@ -1,3 +1,4 @@
+import json
 import pickle
 import os
 from file_operations import list_files_in_directory
@@ -46,19 +47,23 @@ class Hyponyms:
         self.__hyponyms_file_path = hyponyms_file_path
 
         self.hyponyms = None
-        if not self.hyponyms_file_exists:
+        if not self.file_exists or self.file_empty:
             self.hyponyms = self.generate_hyponyms()
-            self.__save_hyponyms_to_pickle(hyponyms=self.hyponyms)
+            self.__save_hyponyms_to_JSON()
         else:
-            self.hyponyms = self.__load_hyponyms_from_pickle()
+            self.hyponyms = self.__load_hyponyms_from_JSON()
 
     @property
     def hyponyms_file_path(self):
         return self.__hyponyms_file_path
 
     @property
-    def hyponyms_file_exists(self):
+    def file_exists(self):
         return os.path.isfile(self.hyponyms_file_path)
+
+    @property
+    def file_empty(self):
+        return self.file_exists and os.stat(self.hyponyms_file_path).st_size == 0
 
     def __load_hyponyms_from_pickle(self) -> dict:
         print("Loading hyponyms dictionary..")
@@ -68,11 +73,26 @@ class Hyponyms:
         print('-' * 50)
         return loaded_hyponyms
 
-    def __save_hyponyms_to_pickle(self, hyponyms):
+    def __load_hyponyms_from_JSON(self) -> dict:
+        print("Loading dictionary of hyponyms from JSON...")
+        with open(self.hyponyms_file_path, "r") as infile:
+            hyponyms: dict = json.load(infile)
+        print("Done loading dictionary of hyponyms from JSON")
+        print('-' * 50)
+        return hyponyms
+
+    def __save_hyponyms_to_pickle(self):
         print("Pickling out dictionary of hyponyms...")
         with open(self.hyponyms_file_path, "wb") as outfile:
-            pickle.dump(hyponyms, outfile)
+            pickle.dump(self.hyponyms, outfile)
         print("Done pickling dictionary of hyponyms.")
+        print('-' * 50)
+
+    def __save_hyponyms_to_JSON(self):
+        print("Saving dictionary of hyponyms to JSON...")
+        with open(self.hyponyms_file_path, "w") as outfile:
+            json.dump(self.hyponyms, outfile)
+        print("Done saving dictionary of hyponyms to JSON")
         print('-' * 50)
 
     def generate_hyponyms(self, phrase_pair_directory: str = 'data/KS2016/'):
@@ -148,7 +168,7 @@ class DenseHyponymMatrices:
         self.normalisation = normalisation
 
         self.density_matrices = None
-        if not self.file_exists:
+        if not self.file_exists or self.file_empty:
             self.density_matrices = self.__generate_density_matrices(hyponyms.hyponyms,
                                                                      hyponym_vectors)
             self.__save_density_matrices_to_pickle()
@@ -165,6 +185,10 @@ class DenseHyponymMatrices:
     @property
     def file_exists(self):
         return os.path.isfile(self.__density_matrices_file_path)
+
+    @property
+    def file_empty(self):
+        return self.file_exists and os.stat(self.density_matrices_file_path).st_size == 0
 
     def __generate_density_matrices(self, hyp_dict: dict, hypo_vectors: dict):
         dim = len(random.choice(list(hypo_vectors.values())))  # dim= length of arbitrary vector
@@ -222,12 +246,22 @@ class DenseHyponymMatrices:
 
 
 def main():
-    hyponyms_all = Hyponyms('data/hyponyms/all_hyponyms.p')
+    hyponyms_all = Hyponyms('data/hyponyms/all_hyponyms.json')
     vectors = hyponyms_all.vectors('data/embedding_data/glove/glove.42B.300d.txt')
     density_matrices = DenseHyponymMatrices(hyponyms_all, vectors,
                                             density_matrices_file_path="data/hyponyms/dm-50d-glove-wn.p")
 
     print("We built {0} density matrices".format(len(density_matrices)))
+
+    print('-' * 50)
+
+    print(density_matrices.density_matrices['member'].shape)
+
+    print('-' * 100)
+    print()
+    print('-' * 100)
+
+
 
 
 if __name__ == "__main__":
