@@ -42,10 +42,17 @@ class SentenceBatch(Batch):
         super().__init__(list_of_sentences)
         self.data = list_of_sentences
 
-        # Useful info that can be gathered at init
-        self.word_frequency = self.__get_unique_words()
-        self.unique_words = sorted(tuple(set(self.word_frequency.keys())))
-        self.number_of_unique_words = len(self.unique_words)
+    @property
+    def word_frequency(self):
+        return self.__get_unique_words()
+
+    @property
+    def unique_words(self):
+        return sorted(tuple(set(self.word_frequency.keys())))
+
+    @property
+    def number_of_unique_words(self):
+        return len(self.unique_words)
 
     def __get_unique_words(self) -> OrderedDict:
         sentences_list = [word_tokenize(sentence) for sentence in self.data]

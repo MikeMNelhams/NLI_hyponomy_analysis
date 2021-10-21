@@ -10,9 +10,9 @@ import numpy as np
 from nltk.corpus import wordnet as wn
 
 
-class KS2016:
-    def __init__(self, ks2016_file_path: str):
-        self.__file_path = ks2016_file_path
+class KS:
+    def __init__(self, ks_file_path: str):
+        self.__file_path = ks_file_path
         self.__phrase_pairs = self.__load_ks2016()
 
         self.scores = list(self.__phrase_pairs.keys())
@@ -101,7 +101,7 @@ class Hyponyms:
         words = []
         for phrase_pair_file_name in phrases_file_names:
             phrase_pair_file_path = phrase_pair_directory + phrase_pair_file_name
-            phrase_pairs = KS2016(phrase_pair_file_path)
+            phrase_pairs = KS(phrase_pair_file_path)
             words += phrase_pairs.words
 
         return self.__hyponyms_from_words(words)
@@ -248,6 +248,7 @@ class DenseHyponymMatrices:
 def main():
     hyponyms_all = Hyponyms('data/hyponyms/all_hyponyms.json')
     vectors = hyponyms_all.vectors('data/embedding_data/glove/glove.42B.300d.txt')
+    print(vectors['a'])
     density_matrices = DenseHyponymMatrices(hyponyms_all, vectors,
                                             density_matrices_file_path="data/hyponyms/dm-50d-glove-wn.p")
 
@@ -260,8 +261,6 @@ def main():
     print('-' * 100)
     print()
     print('-' * 100)
-
-
 
 
 if __name__ == "__main__":
