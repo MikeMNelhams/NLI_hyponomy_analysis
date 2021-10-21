@@ -1,19 +1,18 @@
 from data_handling import SNLI_DataLoader
-import word_embedding
+from embeddings import glove_matrix
 
 
 def main():
-    test_loader = SNLI_DataLoader("data/snli_1.0/snli_1.0_test.jsonl")
+    train_path = "data/snli_1.0/snli_1.0_train.jsonl"
+    validation_path = "data/snli_1.0/snli_1.0_dev.jsonl"
+    test_path = "data/snli_1.0/snli_1.0_test.jsonl"
+
+    test_loader = SNLI_DataLoader(train_path)
 
     batch_size = 256
 
     train_data = test_loader.load_batch_random(batch_size)
-    print(list(train_data[0].keys()))
-
-    train_data.data_by_field("sentence1")
-    print(train_data)
-    train_data.apply(word_embedding.sentence_to_words)
-    print(train_data)
+    print(train_data.to_sentence_batch())
 
 
 if __name__ == '__main__':

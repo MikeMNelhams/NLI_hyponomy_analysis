@@ -1,8 +1,15 @@
 from typing import List
+from typing import Any
+
+from itertools import chain
+from collections import Counter
+from collections import OrderedDict
 
 import random
 
 import json
+
+from nltk.tokenize import word_tokenize
 
 
 class BatchSizeTooLargeError(Exception):
@@ -18,10 +25,10 @@ class NotSingleFieldError(Exception):
 
 
 class Batch(list):
-    def __init__(self, list_batch: List[dict]):
+    def __init__(self, list_batch: List[Any]):
         super().__init__(list_batch)
         self.data = list_batch
-        self.__is_single_field = False
+        self.is_single_field = False
 
     def __str__(self):
         return self.data.__str__()
@@ -29,21 +36,33 @@ class Batch(list):
     def __repr__(self):
         return self.data.__repr__()
 
-    def __getitem__(self, item):
-        return self.data[item]
 
-    def data_by_field(self, field_name) -> None:
-        if self.__is_single_field:
-            return None
+class SentenceBatch(Batch):
+    def __init__(self, list_of_sentences: List[str]):
+        super().__init__(list_of_sentences)
+        self.data = list_of_sentences
 
-        self.__is_single_field = True
-        self.data = [line[field_name] for line in self.data]
+        # Useful info that can be gathered at init
+        self.word_frequency = self.__get_unique_words()
+        self.unique_words = sorted(tuple(set(self.word_frequency.keys())))
+        self.number_of_unique_words = len(self.unique_words)
 
-    def apply(self, func: callable):
-        if self.__is_single_field:
-            self.data = [func(line) for line in self.data]
-        else:
-            raise NotSingleFieldError
+    def __get_unique_words(self) -> OrderedDict:
+        sentences_list = [word_tokenize(sentence) for sentence in self.data]
+        sentences_list = chain(*sentences_list)
+        words_list = Counter(sentences_list)
+        del sentences_list
+        return OrderedDict(sorted(words_list.items()))
+
+
+class DictBatch(Batch):
+    def __init__(self, list_of_dicts: List[dict]):
+        super().__init__(list_of_dicts)
+        self.data = list_of_dicts
+        self.headers = self.data[0].keys()
+
+    def to_sentence_batch(self, field_name) -> SentenceBatch:
+        return SentenceBatch([line[field_name] for line in self.data])
 
 
 class SNLI_DataLoader:
@@ -59,7 +78,7 @@ class SNLI_DataLoader:
             number_of_lines = sum([1 for i, x in enumerate(file) if x[-1] == '\n'])
         return number_of_lines
 
-    def load_line(self, line_number: int) -> Batch:
+    def load_line(self, line_number: int) -> DictBatch:
         """ Only use this if you want a specific line, not a batch.
 
         Very efficient, better than linecache or loading entire file.
@@ -73,9 +92,9 @@ class SNLI_DataLoader:
         content = content[0]
         content = json.loads(content)
 
-        return Batch([content])
+        return DictBatch([content])
 
-    def load_batch_sequential(self, batch_size: int, from_start: bool =False) -> Batch:
+    def load_batch_sequential(self, batch_size: int, from_start: bool =False) -> DictBatch:
         """ Correct way to load data
 
         Very efficient
@@ -117,11 +136,11 @@ class SNLI_DataLoader:
         if overlap:
             remaining_batch_size = batch_size - (batch_end_index - batch_start_index)
             content3 = self.load_batch_sequential(remaining_batch_size, from_start=True)
-            return Batch(content2 + content3)
+            return DictBatch(content2 + content3)
 
-        return Batch(content2)
+        return DictBatch(content2)
 
-    def load_batch_random(self, batch_size: int) -> Batch:
+    def load_batch_random(self, batch_size: int) -> DictBatch:
         """ O(File_size) load random lines"""
         # Uses reservoir sampling.
         # There is actually a FASTER way to do this using more complicated sampling:
@@ -141,7 +160,7 @@ class SNLI_DataLoader:
                     loc = random.randint(0, batch_size - 1)
                     buffer[loc] = json.loads(line)
 
-        return Batch(buffer)
+        return DictBatch(buffer)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import random
 from data_handling import SNLI_DataLoader
 
 
-class MyTestCase(unittest.TestCase):
+class LoadBatches(unittest.TestCase):
     test_data = SNLI_DataLoader("data/snli_1.0/snli_1.0_test.jsonl")
 
     def test_load_batch_sequential(self):
