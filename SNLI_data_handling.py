@@ -61,7 +61,7 @@ class DictBatch(Batch):
         self.data = list_of_dicts
         self.headers = self.data[0].keys()
 
-    def to_sentence_batch(self, field_name) -> SentenceBatch:
+    def to_sentence_batch(self, field_name: str) -> SentenceBatch:
         return SentenceBatch([line[field_name] for line in self.data])
 
 

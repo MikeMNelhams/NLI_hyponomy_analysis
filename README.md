@@ -1,4 +1,4 @@
-# NLI_hyponmy_analysis
+# NLI_hyponomy_analysis
 
 ### Data from publicly available SNLI database:
 
@@ -8,3 +8,4 @@ http://nlp.stanford.edu/pubs/snli_paper.pdf
     A large annotated corpus for learning natural language inference. 
     Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing (EMNLP).
 
+## Many thanks to **Dr. Martha Lewis**, the supervisor for the project

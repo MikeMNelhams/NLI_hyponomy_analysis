@@ -1,6 +1,6 @@
 import unittest
 import random
-from data_handling import SNLI_DataLoader
+from SNLI_data_handling import SNLI_DataLoader
 
 
 class LoadBatches(unittest.TestCase):

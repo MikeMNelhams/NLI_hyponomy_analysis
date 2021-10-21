@@ -13,6 +13,7 @@ def replace_ampersand(word: str) -> str:
 
 
 class WordParser:
+    """ A way to combine multiple filters into a callable."""
     def __init__(self, actions: Iterable[callable]):
         self.__actions = actions
 
