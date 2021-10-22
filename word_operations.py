@@ -22,3 +22,7 @@ class WordParser:
         for action in self.__actions:
             word_copy = action(word_copy)
         return word_copy
+
+    @staticmethod
+    def default_clean() -> "WordParser":
+        return WordParser((str.lower, replace_ampersand, remove_punctuation, str.strip))

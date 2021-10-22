@@ -13,14 +13,9 @@ def main():
 
     batch_size = 256
 
-    train_data = train_loader.load_batch_random(batch_size)
+    train_data = train_loader.load_batch_random(batch_size).to_model_data()
 
-    train_sentences_1 = train_data.to_sentence_batch(field_name="sentence1")
-    train_sentences_2 = train_data.to_sentence_batch(field_name="sentence2")
-    train_labels = train_data.to_gold_labels_batch()
-    print(train_labels)
-
-    print(train_sentences_1)
+    train_data.clean_data()
 
     # word_vectors = glove_matrix(input_file_path='data\\embedding_data\\glove\\glove.42B.300d.txt',
     #                             output_file_path='data\\embedding_data\\word2vec\\glove.42B.300d.txt')
