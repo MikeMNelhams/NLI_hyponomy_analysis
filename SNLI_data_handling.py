@@ -24,6 +24,10 @@ class NotSingleFieldError(Exception):
     """ When you try to do something to a batch which hasn't be trimmed to a single field"""
 
 
+class InvalidBatchKeyError(Exception):
+    pass
+
+
 class Batch(list):
     def __init__(self, list_batch: List[Any]):
         super().__init__(list_batch)
@@ -38,6 +42,7 @@ class Batch(list):
 
 
 class SentenceBatch(Batch):
+    """ Loaded with useful stats properties"""
     def __init__(self, list_of_sentences: List[str]):
         super().__init__(list_of_sentences)
         self.data = list_of_sentences
@@ -62,14 +67,25 @@ class SentenceBatch(Batch):
         return OrderedDict(sorted(words_list.items()))
 
 
-class DictBatch(Batch):
+class GoldLabelBatch(Batch):
+    def __init__(self, list_of_labels: List[str]):
+        super().__init__(list_of_labels)
+        self.data = list_of_labels
+
+
+class ModelBatch(Batch):
     def __init__(self, list_of_dicts: List[dict]):
         super().__init__(list_of_dicts)
         self.data = list_of_dicts
         self.headers = self.data[0].keys()
 
     def to_sentence_batch(self, field_name: str) -> SentenceBatch:
+        if field_name not in ('sentence1', 'sentence2', 'sentence{1,2}_parse', 'sentence{1,2}_binary_parse'):
+            raise InvalidBatchKeyError
         return SentenceBatch([line[field_name] for line in self.data])
+
+    def to_gold_labels_batch(self) -> GoldLabelBatch:
+        return GoldLabelBatch([line['gold_label'] for line in self.data])
 
 
 class SNLI_DataLoader:
@@ -85,7 +101,7 @@ class SNLI_DataLoader:
             number_of_lines = sum([1 for i, x in enumerate(file) if x[-1] == '\n'])
         return number_of_lines
 
-    def load_line(self, line_number: int) -> DictBatch:
+    def load_line(self, line_number: int) -> ModelBatch:
         """ Only use this if you want a specific line, not a batch.
 
         Very efficient, better than linecache or loading entire file.
@@ -99,9 +115,9 @@ class SNLI_DataLoader:
         content = content[0]
         content = json.loads(content)
 
-        return DictBatch([content])
+        return ModelBatch([content])
 
-    def load_batch_sequential(self, batch_size: int, from_start: bool =False) -> DictBatch:
+    def load_batch_sequential(self, batch_size: int, from_start: bool =False) -> ModelBatch:
         """ Correct way to load data
 
         Very efficient
@@ -143,11 +159,11 @@ class SNLI_DataLoader:
         if overlap:
             remaining_batch_size = batch_size - (batch_end_index - batch_start_index)
             content3 = self.load_batch_sequential(remaining_batch_size, from_start=True)
-            return DictBatch(content2 + content3)
+            return ModelBatch(content2 + content3)
 
-        return DictBatch(content2)
+        return ModelBatch(content2)
 
-    def load_batch_random(self, batch_size: int) -> DictBatch:
+    def load_batch_random(self, batch_size: int) -> ModelBatch:
         """ O(File_size) load random lines"""
         # Uses reservoir sampling.
         # There is actually a FASTER way to do this using more complicated sampling:
@@ -167,7 +183,7 @@ class SNLI_DataLoader:
                     loc = random.randint(0, batch_size - 1)
                     buffer[loc] = json.loads(line)
 
-        return DictBatch(buffer)
+        return ModelBatch(buffer)
 
 
 if __name__ == "__main__":
