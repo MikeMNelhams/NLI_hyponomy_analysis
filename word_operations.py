@@ -12,6 +12,10 @@ def replace_ampersand(word: str) -> str:
     return word.replace('&', 'and')
 
 
+def remove_speech_marks(word: str) -> str:
+    return word.replace('"', '')
+
+
 class WordParser:
     """ A way to combine multiple filters into a callable."""
     def __init__(self, actions: Iterable[callable]):
@@ -25,4 +29,4 @@ class WordParser:
 
     @staticmethod
     def default_clean() -> "WordParser":
-        return WordParser((str.lower, replace_ampersand, remove_punctuation, str.strip))
+        return WordParser((str.lower, replace_ampersand, remove_punctuation, remove_speech_marks, str.strip))

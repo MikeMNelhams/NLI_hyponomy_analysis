@@ -12,4 +12,8 @@ def glove_matrix(input_file_path: str, output_file_path: str):
         print('Done')
         print('-' * 50)
 
-    return KeyedVectors.load_word2vec_format(output_file_path, binary=False)
+    print('Loading keyed vectors')
+    out = KeyedVectors.load_word2vec_format(output_file_path, binary=False)
+    print('Done')
+    print('-' * 50)
+    return out

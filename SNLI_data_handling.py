@@ -13,6 +13,9 @@ import json
 
 from word_operations import WordParser
 from nltk.tokenize import word_tokenize
+from gensim.models.keyedvectors import KeyedVectors
+
+import torch
 
 
 class BatchSizeTooLargeError(Exception):
@@ -29,6 +32,10 @@ class NotSingleFieldError(Exception):
 
 class InvalidBatchKeyError(Exception):
     pass
+
+
+class PadSizeTooSmallError(Exception):
+    """Called when pad size < list size"""
 
 
 class Batch:
@@ -77,8 +84,26 @@ class GoldLabelBatch(Batch):
 
 class EntailmentModelBatch:
     """ [[sentence1: str], [sentence2: str], [label: str]]"""
-    def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable):
+    def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable, word_delimiter=' '):
         self.data = np.array((sentence1_batch, sentence2_batch, labels)).T
+        self.__word_delimiter = word_delimiter
+
+        self.__max_sentence_lengths = tuple((self.__max_sentence_length(self.data[:, col_num])
+                                             for col_num in range(self.data.shape[1] - 1)))
+
+    def __str__(self):
+        return str(self.data)
+
+    @property
+    def word_delimiter(self):
+        return self.__word_delimiter
+
+    @property
+    def max_sentence_lengths(self):
+        return self.__max_sentence_lengths
+
+    def __max_sentence_length(self, sentence_column: np.array) -> int:
+        return max(len(line.split(self.word_delimiter)) for line in sentence_column)
 
     def clean_data(self, clean_actions: WordParser = None) -> None:
         # Ternary operator for SPEED and lack of intelliJ errors
@@ -88,8 +113,40 @@ class EntailmentModelBatch:
         self.data[:, 1] = clean(self.data[:, 1])
         return None
 
-    def __str__(self):
-        return str(self.data)
+    @staticmethod
+    def pad(list_to_pad: list, max_length: int, pad_value: Any = 0) -> list:
+        if len(list_to_pad) > max_length:
+            raise PadSizeTooSmallError
+        padded_list = list_to_pad + [pad_value for _ in range(max_length - len(list_to_pad))]
+        return padded_list
+
+    def to_tensor(self, sentence_num: int, word_vectors: KeyedVectors) -> torch.tensor:
+        """ word_vectors must be same length for all words.
+            sentence_num begins 1, 2, 3..."""
+        assert 0 < sentence_num < self.data.shape[1], "Sentence number must be less than self.data.shape[1]"
+
+        column_number = sentence_num - 1
+
+        data_to_process = self.data[:, column_number]
+
+        max_sentence_length = self.max_sentence_lengths[column_number]
+        embed_vector_length = word_vectors.vector_size
+
+        def get_vector(word: Any) -> list:
+            if type(word) != str:
+                return [0 for _ in range(embed_vector_length)]
+            vector = []
+            try:
+                vector = list(word_vectors[word])
+            except KeyError:
+                vector = [0 for _ in range(embed_vector_length)]
+            return vector
+
+        padded_tensor = torch.tensor([[get_vector(word)
+                                       for word in self.pad(row.split(), max_sentence_length)]
+                                      for row in data_to_process])
+        print(padded_tensor.shape)
+        return padded_tensor
 
 
 class DictBatch(Batch):

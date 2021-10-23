@@ -16,9 +16,12 @@ def main():
     train_data = train_loader.load_batch_random(batch_size).to_model_data()
 
     train_data.clean_data()
+    print(train_data.max_sentence_lengths)
 
-    # word_vectors = glove_matrix(input_file_path='data\\embedding_data\\glove\\glove.42B.300d.txt',
-    #                             output_file_path='data\\embedding_data\\word2vec\\glove.42B.300d.txt')
+    word_vectors = glove_matrix(input_file_path='data\\embedding_data\\glove\\glove.42B.300d.txt',
+                                output_file_path='data\\embedding_data\\word2vec\\glove.42B.300d.txt')
+
+    train_data.to_tensor(sentence_num=1, word_vectors=word_vectors)
 
 
 if __name__ == '__main__':
