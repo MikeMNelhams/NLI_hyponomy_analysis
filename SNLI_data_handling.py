@@ -84,12 +84,15 @@ class GoldLabelBatch(Batch):
 
 class EntailmentModelBatch:
     """ [[sentence1: str], [sentence2: str], [label: str]]"""
+    """ Entailment is either 'contradiction': -1, 'neutral': 0, 'entailment': 1"""
     def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable, word_delimiter=' '):
         self.data = np.array((sentence1_batch, sentence2_batch, labels)).T
         self.__word_delimiter = word_delimiter
 
         self.__max_sentence_lengths = tuple((self.__max_sentence_length(self.data[:, col_num])
                                              for col_num in range(self.data.shape[1] - 1)))
+
+        self.__labels_encoding = self.__get_labels_encoding()
 
     def __str__(self):
         return str(self.data)
@@ -102,6 +105,10 @@ class EntailmentModelBatch:
     def max_sentence_lengths(self):
         return self.__max_sentence_lengths
 
+    @property
+    def labels_encoding(self):
+        return self.__labels_encoding
+
     def __max_sentence_length(self, sentence_column: np.array) -> int:
         return max(len(line.split(self.word_delimiter)) for line in sentence_column)
 
@@ -109,8 +116,8 @@ class EntailmentModelBatch:
         # Ternary operator for SPEED and lack of intelliJ errors
         clean = np.vectorize(clean_actions) if clean_actions is not None else np.vectorize(WordParser.default_clean())
 
-        self.data[:, 0] = clean(self.data[:, 0])
-        self.data[:, 1] = clean(self.data[:, 1])
+        for col_index in range(self.data.shape[1]):
+            self.data[:, col_index] = clean(self.data[:, col_index])
         return None
 
     @staticmethod
@@ -145,8 +152,18 @@ class EntailmentModelBatch:
         padded_tensor = torch.tensor([[get_vector(word)
                                        for word in self.pad(row.split(), max_sentence_length)]
                                       for row in data_to_process])
-        print(padded_tensor.shape)
+
+        padding_mask_tensor = torch.tensor([[1 if word != 0 else 0
+                                            for word in self.pad(row.split(), max_sentence_length)]
+                                            for row in data_to_process])
+        print(padding_mask_tensor)
         return padded_tensor
+
+    def __get_labels_encoding(self) -> np.array:
+        label_encoding = {'entailment': 1, 'neutral': 0, 'contradiction': -1, '-': 0}
+        label_column_number = self.data.shape[1] - 1
+        one_hot_labels = np.array([label_encoding[label] for label in self.data[:, label_column_number]])
+        return one_hot_labels
 
 
 class DictBatch(Batch):

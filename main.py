@@ -1,7 +1,9 @@
 from SNLI_data_handling import SNLI_DataLoader
 from Hyponyms import KS, Hyponyms, DenseHyponymMatrices
 
-from custom_embeddings import glove_matrix
+import embeddings as cstm_embd
+
+import torch
 
 
 def main():
@@ -17,11 +19,15 @@ def main():
 
     train_data.clean_data()
     print(train_data.max_sentence_lengths)
+    print(train_data.labels_encoding)
 
-    word_vectors = glove_matrix(input_file_path='data\\embedding_data\\glove\\glove.42B.300d.txt',
-                                output_file_path='data\\embedding_data\\word2vec\\glove.42B.300d.txt')
+    # word_vectors = cstm_embd.glove_matrix(input_file_path='data\\embedding_data\\glove\\glove.42B.300d.txt',
+    #                                       output_file_path='data\\embedding_data\\word2vec\\glove.42B.300d.txt')
 
-    train_data.to_tensor(sentence_num=1, word_vectors=word_vectors)
+    #
+    # train_sentence1 = train_data.to_tensor(sentence_num=1, word_vectors=word_vectors)
+    # train_sentence2 = train_data.to_tensor(sentence_num=2, word_vectors=word_vectors)
+    # train_labels = torch.tensor(train_data.data[:, 2])
 
 
 if __name__ == '__main__':

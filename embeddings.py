@@ -2,6 +2,7 @@ from gensim.scripts.glove2word2vec import glove2word2vec
 from gensim.models.keyedvectors import KeyedVectors
 
 import os
+import csv
 
 
 def glove_matrix(input_file_path: str, output_file_path: str):

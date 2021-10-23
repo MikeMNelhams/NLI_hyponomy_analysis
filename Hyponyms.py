@@ -1,7 +1,7 @@
 import json
 import pickle
 import os
-from file_operations import list_files_in_directory
+import file_operations
 from warnings import warn
 
 import random
@@ -49,9 +49,9 @@ class Hyponyms:
         self.hyponyms = None
         if not self.file_exists or self.file_empty:
             self.hyponyms = self.generate_hyponyms()
-            self.__save_hyponyms_to_JSON()
+            self.__save_hyponyms(self.hyponyms_file_path)
         else:
-            self.hyponyms = self.__load_hyponyms_from_JSON()
+            self.hyponyms = self.__load_hyponyms(self.hyponyms_file_path)
 
     @property
     def hyponyms_file_path(self):
@@ -64,6 +64,22 @@ class Hyponyms:
     @property
     def file_empty(self):
         return self.file_exists and os.stat(self.hyponyms_file_path).st_size == 0
+
+    def __load_hyponyms(self, file_path: str) -> dict:
+        if file_operations.is_file(file_path, '.p'):
+            return self.__load_hyponyms_from_pickle()
+        if file_operations.is_file(file_path, '.json'):
+            return self.__load_hyponyms_from_JSON()
+
+        raise file_operations.InvalidPathError
+
+    def __save_hyponyms(self, file_path: str) -> None:
+        if file_operations.is_file(file_path, '.p'):
+            self.__save_hyponyms_to_pickle()
+        if file_operations.is_file(file_path, '.json'):
+            self.__save_hyponyms_to_JSON()
+
+        raise file_operations.InvalidPathError
 
     def __load_hyponyms_from_pickle(self) -> dict:
         print("Loading hyponyms dictionary..")
@@ -81,14 +97,15 @@ class Hyponyms:
         print('-' * 50)
         return hyponyms
 
-    def __save_hyponyms_to_pickle(self):
+    def __save_hyponyms_to_pickle(self) -> None:
         print("Pickling out dictionary of hyponyms...")
         with open(self.hyponyms_file_path, "wb") as outfile:
             pickle.dump(self.hyponyms, outfile)
         print("Done pickling dictionary of hyponyms.")
         print('-' * 50)
+        return None
 
-    def __save_hyponyms_to_JSON(self):
+    def __save_hyponyms_to_JSON(self) -> None:
         print("Saving dictionary of hyponyms to JSON...")
         with open(self.hyponyms_file_path, "w") as outfile:
             json.dump(self.hyponyms, outfile)
@@ -96,7 +113,7 @@ class Hyponyms:
         print('-' * 50)
 
     def generate_hyponyms(self, phrase_pair_directory: str = 'data/KS2016/'):
-        phrases_file_names = list_files_in_directory(phrase_pair_directory, extension_type='.txt')
+        phrases_file_names = file_operations.list_files_in_directory(phrase_pair_directory, extension_type='.txt')
 
         words = []
         for phrase_pair_file_name in phrases_file_names:
