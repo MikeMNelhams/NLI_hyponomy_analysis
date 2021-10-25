@@ -13,7 +13,7 @@ import json
 
 from word_operations import WordParser
 from nltk.tokenize import word_tokenize
-from gensim.models.keyedvectors import KeyedVectors
+from embeddings import GloveEmbedding
 
 import torch
 
@@ -87,6 +87,7 @@ class EntailmentModelBatch:
     """ Entailment is either 'contradiction': -1, 'neutral': 0, 'entailment': 1"""
     def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable, word_delimiter=' '):
         self.data = np.array((sentence1_batch, sentence2_batch, labels)).T
+        self.batch_size = self.data.shape[0]
         self.__word_delimiter = word_delimiter
 
         self.__max_sentence_lengths = tuple((self.__max_sentence_length(self.data[:, col_num])
@@ -127,7 +128,7 @@ class EntailmentModelBatch:
         padded_list = list_to_pad + [pad_value for _ in range(max_length - len(list_to_pad))]
         return padded_list
 
-    def to_tensor(self, sentence_num: int, word_vectors: KeyedVectors) -> torch.tensor:
+    def __sentence_to_tensors(self, sentence_num: int, word_vectors: GloveEmbedding) -> (torch.Tensor, torch.Tensor):
         """ word_vectors must be same length for all words.
             sentence_num begins 1, 2, 3..."""
         assert 0 < sentence_num < self.data.shape[1], "Sentence number must be less than self.data.shape[1]"
@@ -137,27 +138,81 @@ class EntailmentModelBatch:
         data_to_process = self.data[:, column_number]
 
         max_sentence_length = self.max_sentence_lengths[column_number]
-        embed_vector_length = word_vectors.vector_size
+        embed_vector_length = len(list(word_vectors.lookup('the')))
+
+        padding_list = [0 for _ in range(embed_vector_length)]
 
         def get_vector(word: Any) -> list:
-            if type(word) != str:
-                return [0 for _ in range(embed_vector_length)]
-            vector = []
-            try:
-                vector = list(word_vectors[word])
-            except KeyError:
-                vector = [0 for _ in range(embed_vector_length)]
-            return vector
+            if word == 0:
+                return padding_list
+            word_vector = word_vectors.lookup(word)
+            # Lookup returns None if word is OOV
+            if word_vector is None:
+                return padding_list
+            return word_vector
 
         padded_tensor = torch.tensor([[get_vector(word)
                                        for word in self.pad(row.split(), max_sentence_length)]
-                                      for row in data_to_process])
+                                     for row in data_to_process], dtype=torch.float32)
 
         padding_mask_tensor = torch.tensor([[1 if word != 0 else 0
                                             for word in self.pad(row.split(), max_sentence_length)]
                                             for row in data_to_process])
-        print(padding_mask_tensor)
-        return padded_tensor
+
+        desired_mask_shape = (-1, -1, embed_vector_length)
+
+        padding_mask_tensor = padding_mask_tensor.unsqueeze(-1).expand(*desired_mask_shape)
+
+        return padded_tensor, padding_mask_tensor
+
+    def to_tensors(self, word_vectors: GloveEmbedding):
+        # Make empty lists
+        sentences = [None for i in range(self.data.shape[1] - 1)]
+        masks = sentences.copy()
+
+        # Fetch all the tensor info for each batch of sentences.
+        for i in range(len(sentences)):
+            sentences[i], masks[i] = self.__sentence_to_tensors(sentence_num=i + 1, word_vectors=word_vectors)
+
+        sentences, masks = self.__sentence_tensor_stack(sentences, masks)
+        return sentences, masks
+
+    def __sentence_tensor_stack(self,
+                                sentences,
+                                masks,
+                                pad_value=0) -> (torch.tensor, torch.tensor):
+        # Sentences/Masks INPUT will be shapes:
+        # 1. (256, Mp1, 300)
+        # 2. (256, Mp2, 300), ...
+
+        paddings = tuple([sentence.shape[1] for sentence in sentences])
+        biggest_sentence = int(np.argmax(paddings))
+        max_pad = paddings[biggest_sentence]
+
+        for sentence_idx in range(len(sentences)):
+            if sentence_idx != biggest_sentence:
+                sentences[sentence_idx] = self.__pad_tensor(sentences[sentence_idx],
+                                                            max_pad=max_pad, pad_value=pad_value)
+
+        for mask_idx in range(len(masks)):
+            if mask_idx != biggest_sentence:
+                masks[mask_idx] = self.__pad_tensor(masks[mask_idx], max_pad=max_pad, pad_value=0)
+
+        # Sentences/Masks now all shape (256, Mp_{max}, 300)
+        # We want to stack along new dim. Output shape -> (256, Mp_{max}, 300, number_of_sentences=2)
+        return torch.stack(tuple(sentences), dim=-1), torch.stack(tuple(masks), dim=-1)
+
+    def __pad_tensor(self, tensor_input, max_pad: int, pad_value: float = 0):
+        # Input shape (b, Mp1, e)
+        # Output Shape (b, Mp_{max}, e)
+        embed_size = tensor_input.shape[2]
+        pad = tensor_input.shape[1]
+        if pad_value != 0:
+            pad_tensor = torch.ones((self.batch_size, max_pad - pad, embed_size))
+            pad_tensor = torch.multiply(pad_tensor, pad_value)
+            return torch.concat((tensor_input, pad_tensor), dim=1)
+        pad_tensor = torch.zeros((self.batch_size, max_pad - pad, embed_size))
+        return torch.concat((tensor_input, pad_tensor), dim=1)
 
     def __get_labels_encoding(self) -> np.array:
         label_encoding = {'entailment': 1, 'neutral': 0, 'contradiction': -1, '-': 0}

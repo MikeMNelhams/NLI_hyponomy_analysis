@@ -194,6 +194,67 @@ class Transformer(nn.Module):
         return out
 
 
+class EntailmentTransformerBlock(nn.Module):
+    # TODO
+    pass
+
+
+class EntailmentEncoder(nn.Module):
+    def __init__(self, max_sequence_length: int, num_layers: int, heads: int, device, forward_expansion, dropout):
+        super(EntailmentEncoder, self).__init__()
+
+        # Input shape: (batch_size, max_length, embed_size, num_sentences)
+        self.max_length = max_sequence_length
+
+        self.device = device
+
+        self.position_embedding = nn.Embedding(self.max_length, self.embed_size)
+
+        self.layers = nn.ModuleList(
+            [
+                TransformerBlock(self.embed_size, heads, dropout=dropout, forward_expansion=forward_expansion)
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, mask):
+        batch_size, sequence_length, embed_size, num_sentences = x.shape
+        assert num_sentences == self.num_sentences
+        assert sequence_length <= self.max_length
+        # Positional encoding
+        positions = torch.arange(0, sequence_length).expand(batch_size, sequence_length)
+        positions.unsqueeze(-1).expand((-1, -1, -1, num_sentences))  # Duplicate across num sentences
+        positions.to(self.device)
+
+        out = self.dropout(x + self.position_embedding(positions))
+        # Shape (b, max_len, e, num_sentences)
+        for layer in self.layers:
+            out = layer(out, out, out, mask)
+
+        return out
+
+
+class EntailmentTransformer(nn.Module):
+    def __init__(self, sentences, masks,
+                 num_layers: int = 6, forward_expansion: int = 4, heads: int = 8, dropout: float = 0,
+                 device='cuda'):
+        super(EntailmentTransformer, self).__init__()
+
+        # Input shape: (batch_size, max_length, embed_size, num_sentences)
+        self.batch_size, self.max_length, self.embed_size, self.num_sentences = sentences.shape
+
+        self.device = device
+
+    # def forward(self, source, target):
+    #     # Input shape: (batch_size, max_length, embed_size, num_sentences)
+    #     encoder_source1 = self.encoder(source, self.mask)
+    #     out = self.decoder(target, encoder_source, source_mask, self.mask)
+    #
+    #     return out
+
+
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
