@@ -30,3 +30,20 @@ def is_file(file_path: str, extension: str) -> bool:
     if file_path[-len(extension):] != extension:
         return False
     return True
+
+
+def file_without_extension(file_path: str) -> str:
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError
+
+    if '.' not in file_path:
+        raise InvalidPathError
+
+    stop_index = 0
+    for i, character in enumerate(reversed(file_path)):
+        if character == '.':
+            stop_index = i + 1
+            break
+
+    return file_path[:-stop_index]
+

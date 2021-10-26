@@ -1,3 +1,4 @@
+import os.path
 from typing import List
 from typing import Iterable
 from typing import Any
@@ -11,7 +12,8 @@ import numpy as np
 
 import json
 
-from word_operations import WordParser
+from word_operations import WordParser, count_max_sequence_length
+from file_operations import file_without_extension
 from nltk.tokenize import word_tokenize
 from embeddings import GloveEmbedding
 
@@ -85,13 +87,15 @@ class GoldLabelBatch(Batch):
 class EntailmentModelBatch:
     """ [[sentence1: str], [sentence2: str], [label: str]]"""
     """ Entailment is either 'contradiction': -1, 'neutral': 0, 'entailment': 1"""
-    def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable, word_delimiter=' '):
+    def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable,
+                 max_sequence_len: int,
+                 word_delimiter=' '):
         self.data = np.array((sentence1_batch, sentence2_batch, labels)).T
         self.batch_size = self.data.shape[0]
+        self.num_sentences = self.data.shape[1] - 1
         self.__word_delimiter = word_delimiter
 
-        self.__max_sentence_lengths = tuple((self.__max_sentence_length(self.data[:, col_num])
-                                             for col_num in range(self.data.shape[1] - 1)))
+        self.__max_sequence_len = max_sequence_len
 
         self.__labels_encoding = self.__get_labels_encoding()
 
@@ -101,10 +105,6 @@ class EntailmentModelBatch:
     @property
     def word_delimiter(self):
         return self.__word_delimiter
-
-    @property
-    def max_sentence_lengths(self):
-        return self.__max_sentence_lengths
 
     @property
     def labels_encoding(self):
@@ -128,7 +128,8 @@ class EntailmentModelBatch:
         padded_list = list_to_pad + [pad_value for _ in range(max_length - len(list_to_pad))]
         return padded_list
 
-    def __sentence_to_tensors(self, sentence_num: int, word_vectors: GloveEmbedding) -> (torch.Tensor, torch.Tensor):
+    def __sentence_to_tensors(self, sentence_num: int,
+                              word_vectors: GloveEmbedding, pad_value=0) -> (torch.Tensor, torch.Tensor):
         """ word_vectors must be same length for all words.
             sentence_num begins 1, 2, 3..."""
         assert 0 < sentence_num < self.data.shape[1], "Sentence number must be less than self.data.shape[1]"
@@ -137,7 +138,6 @@ class EntailmentModelBatch:
 
         data_to_process = self.data[:, column_number]
 
-        max_sentence_length = self.max_sentence_lengths[column_number]
         embed_vector_length = len(list(word_vectors.lookup('the')))
 
         padding_list = [0 for _ in range(embed_vector_length)]
@@ -151,12 +151,15 @@ class EntailmentModelBatch:
                 return padding_list
             return word_vector
 
+        def pad_row(row: str) -> List:
+            return self.pad(row.split(), self.__max_sequence_len, pad_value=pad_value)
+
         padded_tensor = torch.tensor([[get_vector(word)
-                                       for word in self.pad(row.split(), max_sentence_length)]
+                                       for word in pad_row(row)]
                                      for row in data_to_process], dtype=torch.float32)
 
         padding_mask_tensor = torch.tensor([[1 if word != 0 else 0
-                                            for word in self.pad(row.split(), max_sentence_length)]
+                                            for word in pad_row(row)]
                                             for row in data_to_process])
 
         desired_mask_shape = (-1, -1, embed_vector_length)
@@ -167,7 +170,7 @@ class EntailmentModelBatch:
 
     def to_tensors(self, word_vectors: GloveEmbedding):
         # Make empty lists
-        sentences = [None for i in range(self.data.shape[1] - 1)]
+        sentences = [None for _ in range(self.data.shape[1] - 1)]
         masks = sentences.copy()
 
         # Fetch all the tensor info for each batch of sentences.
@@ -214,21 +217,29 @@ class EntailmentModelBatch:
         pad_tensor = torch.zeros((self.batch_size, max_pad - pad, embed_size))
         return torch.concat((tensor_input, pad_tensor), dim=1)
 
-    def __get_labels_encoding(self) -> np.array:
-        label_encoding = {'entailment': 1, 'neutral': 0, 'contradiction': -1, '-': 0}
+    def __get_labels_encoding(self) -> torch.tensor:
+        label_encoding = {'entailment': [1, 0, 0],
+                          'neutral': [0, 1, 0],
+                          'contradiction': [0, 0, 1],
+                          '-': [0, 1, 0]}
         label_column_number = self.data.shape[1] - 1
-        one_hot_labels = np.array([label_encoding[label] for label in self.data[:, label_column_number]])
+        one_hot_labels = torch.tensor([label_encoding[label] for label in self.data[:, label_column_number]])
+        if one_hot_labels.shape[0] == 1:
+            return torch.squeeze(one_hot_labels)
         return one_hot_labels
 
 
 class DictBatch(Batch):
-    def __init__(self, list_of_dicts: List[dict]):
+    sentence_fields = ('sentence1', 'sentence2', 'sentence{1,2}_parse', 'sentence{1,2}_binary_parse')
+
+    def __init__(self, list_of_dicts: List[dict], max_sequence_len):
         super().__init__(list_of_dicts)
         self.data = list_of_dicts
         self.headers = self.data[0].keys()
+        self.max_sequence_len = max_sequence_len
 
     def to_sentence_batch(self, field_name: str) -> SentenceBatch:
-        if field_name not in ('sentence1', 'sentence2', 'sentence{1,2}_parse', 'sentence{1,2}_binary_parse'):
+        if field_name not in self.sentence_fields:
             raise InvalidBatchKeyError
         return SentenceBatch([line[field_name] for line in self.data])
 
@@ -240,15 +251,65 @@ class DictBatch(Batch):
         sentence2_list = self.to_sentence_batch(model_fields[1]).data
         labels = self.to_labels_batch(model_fields[2]).data
 
-        return EntailmentModelBatch(sentence1_list, sentence2_list, labels)
+        return EntailmentModelBatch(sentence1_list, sentence2_list, labels, self.max_sequence_len)
+
+    def count_max_words_for_sentence_field(self, field_name: str) -> int:
+        if field_name not in self.sentence_fields:
+            raise TypeError
+        return count_max_sequence_length([line[field_name] for line in self.data])
 
 
 class SNLI_DataLoader:
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str, max_sequence_length=None):
         self.__file_path = file_path
+        self.__file_dir_path = os.path.dirname(file_path)
+        self.__max_len_save_path = file_without_extension(self.__file_path) + '_max_len.txt'
+
         self.file_size = self.__get_number_lines()
 
         self.__batch_index = 0
+
+        # TODO allow sentences =/= 2
+        self.num_sentences = 2
+
+        self.max_words_in_sentence_length = 0
+        if max_sequence_length is None:
+            if os.path.isfile(self.__max_len_save_path):
+                self.max_words_in_sentence_length = self.__load_max_sentence_len()
+            else:
+                self.max_words_in_sentence_length = self.__find_max_sentence_len()
+                self.__save_max_sentence_len()
+        else:
+            self.max_words_in_sentence_length = max_sequence_length
+
+    def __len__(self):
+        return self.file_size
+
+    def __find_max_sentence_len(self, batch_size: int=1000) -> int:
+        max_len = 0
+        number_of_iterations = (len(self) // batch_size) + 1
+        # TODO allow sentences =/= 2
+        for i in range(number_of_iterations):
+            print(f'Iter: {i} of {number_of_iterations}')
+            print('MAX LEN:', max_len)
+            print('-'*20)
+            batch = self.load_batch_sequential(batch_size)
+            sentence1_max_len = batch.count_max_words_for_sentence_field('sentence1')
+            sentence2_max_len = batch.count_max_words_for_sentence_field('sentence2')
+            max_len = max((sentence1_max_len, sentence2_max_len, max_len))
+
+        return max_len
+
+    def __save_max_sentence_len(self) -> None:
+        with open(self.__max_len_save_path, 'w') as outfile:
+            outfile.write(str(self.max_words_in_sentence_length))
+
+        return None
+
+    def __load_max_sentence_len(self) -> int:
+        with open(self.__max_len_save_path, 'r') as infile:
+            content = infile.read()
+        return int(content)
 
     def __get_number_lines(self) -> int:
         """ Run at init"""
@@ -270,7 +331,7 @@ class SNLI_DataLoader:
         content = content[0]
         content = json.loads(content)
 
-        return DictBatch([content])
+        return DictBatch([content], max_sequence_len=self.max_words_in_sentence_length)
 
     def load_batch_sequential(self, batch_size: int, from_start: bool =False) -> DictBatch:
         """ Correct way to load data
@@ -314,9 +375,9 @@ class SNLI_DataLoader:
         if overlap:
             remaining_batch_size = batch_size - (batch_end_index - batch_start_index)
             content3 = self.load_batch_sequential(remaining_batch_size, from_start=True)
-            return DictBatch(content2 + content3.data)
+            return DictBatch(content2 + content3.data, max_sequence_len=self.max_words_in_sentence_length)
 
-        return DictBatch(content2)
+        return DictBatch(content2, max_sequence_len=self.max_words_in_sentence_length)
 
     def load_batch_random(self, batch_size: int) -> DictBatch:
         """ O(File_size) load random lines"""
@@ -338,7 +399,7 @@ class SNLI_DataLoader:
                     loc = random.randint(0, batch_size - 1)
                     buffer[loc] = json.loads(line)
 
-        return DictBatch(buffer)
+        return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
 
 
 if __name__ == "__main__":

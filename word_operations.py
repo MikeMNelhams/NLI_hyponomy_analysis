@@ -1,4 +1,5 @@
 from typing import Iterable
+from typing import List
 
 
 def remove_punctuation(word: str, punctuation: iter = (',', '.')) -> str:
@@ -14,6 +15,10 @@ def replace_ampersand(word: str) -> str:
 
 def remove_speech_marks(word: str) -> str:
     return word.replace('"', '')
+
+
+def count_max_sequence_length(list_of_sentences: List[str]):
+    return max(len(row.split()) for row in list_of_sentences)
 
 
 class WordParser:
