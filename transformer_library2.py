@@ -106,14 +106,16 @@ class EntailmentTransformerBlock(nn.Module):
     def __init__(self, embed_size: int, heads: int, dropout, forward_expansion):
         super(EntailmentTransformerBlock, self).__init__()
         self.attention = EntailmentSelfAttention(embed_size=embed_size, heads=heads)
-        self.norm1 = nn.LayerNorm(embed_size)
-        self.norm2 = nn.LayerNorm(embed_size)
 
         self.feed_forward = nn.Sequential(
             nn.Linear(embed_size, forward_expansion * embed_size),
             nn.ReLU(),
             nn.Linear(forward_expansion * embed_size, embed_size)
         )
+
+        self.norm1 = nn.LayerNorm(embed_size)
+        self.norm2 = nn.LayerNorm(embed_size)
+
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, value, key, query, mask):
@@ -184,12 +186,15 @@ class EntailmentTransformer(nn.Module):
         self.hyper_params = hyper_parameters
         self.hyper_params.embed_size = self.embed_size
 
-        self.encoder_flattened_size = self.max_length * self.embed_size * self.num_sentences
+        self.encoder_flattened_size = max_seq_len * self.embed_size * self.num_sentences
 
         self.encoder = EntailmentEncoder(self.num_sentences, max_seq_len, self.hyper_params)
-        self.fc1 = nn.Linear(self.encoder_flattened_size, self.embed_size)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(self.embed_size, number_of_output_classes)
+        self.fc1 = nn.Linear(self.encoder_flattened_size, self.embed_size * max_seq_len, bias=False)
+
+        self.fc2 = nn.Linear(self.embed_size * max_seq_len, self.embed_size, bias=False)
+        self.fc3 = nn.Linear(self.embed_size, number_of_output_classes)
+
+        self.sigmoid = nn.Sigmoid()
 
         self.device = self.hyper_params.device
 
@@ -200,9 +205,10 @@ class EntailmentTransformer(nn.Module):
         x = x.reshape(self.batch_size, self.encoder_flattened_size)
 
         x = self.fc1(x)
-        x = self.relu(x)
+        x = self.sigmoid(x)
         x = self.fc2(x)
-        x = self.relu(x)  # OUTPUT MUST BE POSITIVE
+        x = self.sigmoid(x)
+        x = self.fc3(x)
 
         return x
 
@@ -240,7 +246,7 @@ class EntailmentNet:
                 print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
                 running_loss = 0.0
 
-                batch = self.data_loader.load_batch_random(self.batch_size).to_model_data()
+                batch = self.data_loader.load_batch_sequential(self.batch_size).to_model_data()
                 batch.clean_data()
 
                 inputs, masks = batch.to_tensors(self.word_vectors)
@@ -253,9 +259,9 @@ class EntailmentNet:
                 # Forward -> backward -> optimizer
                 outputs = self.transformer(inputs, masks)
 
-                # print('MODEL OUTPUT:', outputs)
-                # print('LABELS:', labels)
-                # print('OUTPUT SHAPE:', outputs.shape, 'LABEL SHAPE:', labels.shape)
+                print('MODEL OUTPUT:', outputs)
+                print('LABELS:', labels)
+                print('SHAPES:', outputs.shape, labels.shape)
 
                 loss = criterion(outputs, labels)
                 loss.backward()
@@ -276,6 +282,8 @@ class EntailmentNet:
             # for i in range(number_of_iterations):
 
         print('Finished Training.')
+        print('Saving model...')
+        torch.save(self.transformer, 'data/BERT-MIKE-MODEL0/lstmmodelgpu.pth')
 
 
 def main():
