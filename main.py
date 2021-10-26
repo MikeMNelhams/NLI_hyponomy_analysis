@@ -21,10 +21,10 @@ def main():
     # Easily the fastest load time, but not QUITE as fast as compiling for 3 minutes into RAM for < 20 ms query time.
     word_vectors = embed.GloveEmbedding('common_crawl_48', d_emb=300, show_progress=True, default='zero')
 
-    params = HyperParams(heads=10)
+    params = HyperParams(heads=10, batch_size=4)
 
     mike_net = EntailmentNet(word_vectors, train_loader, hyper_parameters=params)
-    mike_net.train(epochs=100, batch_size=256, print_every=1)
+    mike_net.train(epochs=100, print_every=1)
 
 
 if __name__ == '__main__':

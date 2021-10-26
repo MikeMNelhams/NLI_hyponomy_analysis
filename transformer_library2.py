@@ -12,13 +12,14 @@ from SNLI_data_handling import SNLI_DataLoader
 
 class HyperParams:
     def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 8, dropout: float = 0,
-                 device='cuda'):
+                 device='cuda', batch_size: int = 256):
         self.embed_size = 300
         self.num_layers = num_layers
         self.forward_expansion = forward_expansion
         self.heads = heads
         self.dropout = dropout
         self.device = device
+        self.batch_size = batch_size
 
 
 class EntailmentSelfAttention(nn.Module):
@@ -92,7 +93,6 @@ class EntailmentSelfAttention(nn.Module):
         attention = torch.einsum("nhsql,nlshd->nqhds", [attention_softmax, values])
         # Back to the original shape
         attention = attention.reshape(n, query_len, num_sentences, self.heads * self.head_dimension)
-        print('Attention SHAPE:', attention.shape)
         # Full equation: attention(Q, K, V) = softmax((Q K^T)/sqrt(d_k)) V
         #   attention_softmax shape: (n, heads, query_len, key_len)
         #   values shape: (n, value_len, heads, heads_dim)
@@ -174,22 +174,22 @@ class EntailmentEncoder(nn.Module):
 
 
 class EntailmentTransformer(nn.Module):
-    def __init__(self, data_shape, max_seq_len: int, output_shape: int = 3,
+    def __init__(self, data_shape, max_seq_len: int, number_of_output_classes=3,
                  hyper_parameters: HyperParams = HyperParams()):
         super(EntailmentTransformer, self).__init__()
 
         # Input shape: (batch_size, max_length, embed_size, num_sentences)
         self.batch_size, self.max_length, self.embed_size, self.num_sentences = data_shape
-        print('DATA Shape:', data_shape)
+        print('Batch Default Shape:', data_shape)
         self.hyper_params = hyper_parameters
         self.hyper_params.embed_size = self.embed_size
 
+        self.encoder_flattened_size = self.max_length * self.embed_size * self.num_sentences
+
         self.encoder = EntailmentEncoder(self.num_sentences, max_seq_len, self.hyper_params)
-        self.encoder_flattened_size = self.batch_size * self.max_length * self.embed_size * self.num_sentences
-        print(f'({self.encoder_flattened_size},{self.embed_size})')
         self.fc1 = nn.Linear(self.encoder_flattened_size, self.embed_size)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(self.embed_size, output_shape)
+        self.fc2 = nn.Linear(self.embed_size, number_of_output_classes)
 
         self.device = self.hyper_params.device
 
@@ -197,8 +197,8 @@ class EntailmentTransformer(nn.Module):
         # Input shape: (batch_size, max_length, embed_size, num_sentences)
         x = self.encoder(x, mask)
 
-        x = torch.flatten(x)
-        print(x.shape)
+        x = x.reshape(self.batch_size, self.encoder_flattened_size)
+
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
@@ -214,15 +214,17 @@ class EntailmentNet:
         self.word_vectors = word_vectors
         self.__hyper_parameters = hyper_parameters
 
+        self.batch_size = hyper_parameters.batch_size
         self.embed_size = word_vectors.d_emb
         self.num_sentences = data_loader.num_sentences
-        self.input_shape = (1, data_loader.max_words_in_sentence_length, self.embed_size, self.num_sentences)
+        self.input_shape = (self.batch_size, data_loader.max_words_in_sentence_length, self.embed_size, self.num_sentences)
 
         # TODO make this auto from data loader
         self.num_classes = 3
 
         self.transformer = EntailmentTransformer(self.input_shape, max_seq_len=data_loader.max_words_in_sentence_length,
-                                                 hyper_parameters=hyper_parameters, output_shape=self.num_classes)
+                                                 hyper_parameters=hyper_parameters,
+                                                 number_of_output_classes=self.num_classes)
 
         self.optimizer = optim.SGD(self.transformer.parameters(), lr=0.001, momentum=0.9)
 
@@ -230,12 +232,15 @@ class EntailmentNet:
     def hyper_parameters(self):
         return self.__hyper_parameters
 
-    def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), print_every: int = 10):
+    def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
+        number_of_iterations_per_epoch = len(self.data_loader) // self.batch_size
         for epoch in range(epochs):
-            for i in range(len(self.data_loader)):
+            for i in range(number_of_iterations_per_epoch):
+                percentage_complete = round(i*100/number_of_iterations_per_epoch, 1)
+                print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
                 running_loss = 0.0
 
-                batch = self.data_loader.load_batch_random(1).to_model_data()
+                batch = self.data_loader.load_batch_random(self.batch_size).to_model_data()
                 batch.clean_data()
 
                 inputs, masks = batch.to_tensors(self.word_vectors)
@@ -248,7 +253,9 @@ class EntailmentNet:
                 # Forward -> backward -> optimizer
                 outputs = self.transformer(inputs, masks)
 
-                print('MODEL OUTPUT:', outputs, 'LABELS:', labels)
+                # print('MODEL OUTPUT:', outputs)
+                # print('LABELS:', labels)
+                # print('OUTPUT SHAPE:', outputs.shape, 'LABEL SHAPE:', labels.shape)
 
                 loss = criterion(outputs, labels)
                 loss.backward()
@@ -260,6 +267,7 @@ class EntailmentNet:
                     print('[%d, %5d] loss: %.3f' %
                           (epoch + 1, i + 1, running_loss / print_every))
                     running_loss = 0.0
+                print('-' * 20)
 
             # # Instead of sequentially loading data:
             # #   we will sample ceil(len(rows) /batch_size) iterations of random batches

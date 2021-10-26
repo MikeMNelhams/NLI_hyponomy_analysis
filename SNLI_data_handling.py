@@ -218,10 +218,10 @@ class EntailmentModelBatch:
         return torch.concat((tensor_input, pad_tensor), dim=1)
 
     def __get_labels_encoding(self) -> torch.tensor:
-        label_encoding = {'entailment': [1, 0, 0],
-                          'neutral': [0, 1, 0],
-                          'contradiction': [0, 0, 1],
-                          '-': [0, 1, 0]}
+        label_encoding = {'entailment': 0,
+                          'neutral': 1,
+                          'contradiction': 2,
+                          '-': 1}
         label_column_number = self.data.shape[1] - 1
         one_hot_labels = torch.tensor([label_encoding[label] for label in self.data[:, label_column_number]])
         if one_hot_labels.shape[0] == 1:
@@ -364,7 +364,6 @@ class SNLI_DataLoader:
 
         with open(self.__file_path, "r") as file:
             batch_range = range(batch_start_index, batch_end_index)
-            # print('batch range:', batch_range)
             content = [x for i, x in enumerate(file) if i in batch_range]
 
         content2 = [json.loads(json_string) for json_string in content]
