@@ -87,6 +87,12 @@ class GoldLabelBatch(Batch):
 class EntailmentModelBatch:
     """ [[sentence1: str], [sentence2: str], [label: str]]"""
     """ Entailment is either 'contradiction': -1, 'neutral': 0, 'entailment': 1"""
+
+    label_encoding = {'entailment': 0,
+                      'neutral': 1,
+                      'contradiction': 2,
+                      '-': 1}
+
     def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable,
                  max_sequence_len: int,
                  word_delimiter=' '):
@@ -128,16 +134,17 @@ class EntailmentModelBatch:
         padded_list = list_to_pad + [pad_value for _ in range(max_length - len(list_to_pad))]
         return padded_list
 
-    def to_tensors(self, word_vectors: GloveEmbedding):
+    def to_tensors(self, word_vectors: GloveEmbedding, pad_value=0):
         # Make empty lists
         sentences = [None for _ in range(self.data.shape[1] - 1)]
         masks = sentences.copy()
 
         # Fetch all the tensor info for each batch of sentences.
         for i in range(len(sentences)):
-            sentences[i], masks[i] = self.__sentence_to_tensors(sentence_num=i + 1, word_vectors=word_vectors)
+            sentences[i], masks[i] = self.__sentence_to_tensors(sentence_num=i + 1, word_vectors=word_vectors,
+                                                                pad_value=pad_value)
 
-        sentences, masks = self.__sentence_tensor_stack(sentences, masks)
+        sentences, masks = self.__sentence_tensor_stack(sentences, masks, pad_value=pad_value)
         return sentences, masks
 
     def __sentence_to_tensors(self, sentence_num: int,
@@ -152,7 +159,7 @@ class EntailmentModelBatch:
 
         embed_vector_length = len(list(word_vectors.lookup('the')))
 
-        padding_list = [0 for _ in range(embed_vector_length)]
+        padding_list = [pad_value for _ in range(embed_vector_length)]
 
         def get_vector(word: Any) -> list:
             if word == 0:
@@ -163,15 +170,15 @@ class EntailmentModelBatch:
                 return padding_list
             return word_vector
 
-        def pad_row(row: str) -> List:
-            return self.pad(row.split(), self.__max_sequence_len, pad_value=pad_value)
+        def pad_row(row: str, __pad_value=pad_value) -> List:
+            return self.pad(row.split(), self.__max_sequence_len, pad_value=__pad_value)
 
         padded_tensor = torch.tensor([[get_vector(word)
                                        for word in pad_row(row)]
                                      for row in data_to_process], dtype=torch.float32)
 
         padding_mask_tensor = torch.tensor([[1 if word != 0 else 0
-                                            for word in pad_row(row)]
+                                            for word in pad_row(row, 0)]
                                             for row in data_to_process])
 
         desired_mask_shape = (-1, -1, embed_vector_length)
@@ -218,12 +225,8 @@ class EntailmentModelBatch:
         return torch.concat((tensor_input, pad_tensor), dim=1)
 
     def __get_labels_encoding(self) -> torch.tensor:
-        label_encoding = {'entailment': 0,
-                          'neutral': 1,
-                          'contradiction': 2,
-                          '-': 1}
         label_column_number = self.data.shape[1] - 1
-        one_hot_labels = torch.tensor([label_encoding[label] for label in self.data[:, label_column_number]])
+        one_hot_labels = torch.tensor([self.label_encoding[label] for label in self.data[:, label_column_number]])
         if one_hot_labels.shape[0] == 1:
             return torch.squeeze(one_hot_labels)
         return one_hot_labels
@@ -287,13 +290,14 @@ class SNLI_DataLoader:
 
     def __find_max_sentence_len(self, batch_size: int=1000) -> int:
         max_len = 0
-        number_of_iterations = (len(self) // batch_size) + 1
+        file_load_size = min(batch_size, len(self))
+        number_of_iterations = (len(self) // file_load_size) + 1
         # TODO allow sentences =/= 2
         for i in range(number_of_iterations):
             print(f'Iter: {i} of {number_of_iterations}')
             print('MAX LEN:', max_len)
             print('-'*20)
-            batch = self.load_batch_sequential(batch_size)
+            batch = self.load_batch_sequential(file_load_size)
             sentence1_max_len = batch.count_max_words_for_sentence_field('sentence1')
             sentence2_max_len = batch.count_max_words_for_sentence_field('sentence2')
             max_len = max((sentence1_max_len, sentence2_max_len, max_len))
@@ -348,7 +352,7 @@ class SNLI_DataLoader:
             self.__batch_index = 0
 
         if batch_size > self.file_size:
-            raise BatchSizeTooLargeError
+            raise BatchSizeTooLargeError(batch_size, len(self))
 
         if self.__batch_index >= self.file_size:
             self.__batch_index = 0

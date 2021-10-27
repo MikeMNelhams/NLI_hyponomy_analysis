@@ -1,3 +1,5 @@
+import os.path
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -8,18 +10,22 @@ from SNLI_data_handling import SNLI_DataLoader
 
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
 #   Paper: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
+class ModelAlreadyTrainedError(Exception):
+    def __init__(self, file_path: str):
+        super().__init__(f'Model cannot train, since it already has been trained and saved to: {file_path}')
 
 
 class HyperParams:
     def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 8, dropout: float = 0,
-                 device='cuda', batch_size: int = 256):
+                 device="cuda", batch_size: int = 256, learning_rate: float = 0.1):
         self.num_layers = num_layers
         self.forward_expansion = forward_expansion
         self.heads = heads
         self.dropout = dropout
         self.batch_size = batch_size
+        self.learning_rate = learning_rate
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
 
 class EntailmentSelfAttention(nn.Module):
@@ -34,26 +40,26 @@ class EntailmentSelfAttention(nn.Module):
 
         assert (self.head_dimension * heads == embed_size), "Embed size needs to be divisible by heads"
 
-        self.values = nn.Linear(self.head_dimension, self.head_dimension, bias=False)
-        self.keys = nn.Linear(self.head_dimension, self.head_dimension, bias=False)
-        self.queries = nn.Linear(self.head_dimension, self.head_dimension, bias=False)
+        self.values = nn.Linear(embed_size, embed_size, bias=False)
+        self.keys = nn.Linear(embed_size, embed_size, bias=False)
+        self.queries = nn.Linear(embed_size, embed_size, bias=False)
         self.fully_connected_out = nn.Linear(embed_size, embed_size)
 
-    def forward(self, values: np.array, keys: np.array, query: np.array, mask):
+    def forward(self, values: np.array, keys: np.array, queries: np.array, mask):
         """ Multi-head concat Attention."""
 
-        n = query.shape[0]  # Batch Size
-        value_len, key_len, query_len = values.shape[2], keys.shape[2], query.shape[2]  # Max sequence len
+        n = queries.shape[0]  # Batch Size
+        value_len, key_len, query_len = values.shape[2], keys.shape[2], queries.shape[2]  # Max sequence len
         num_sentences = values.shape[1]
-
-        # Split pieces into self.heads pieces
-        values = values.reshape(n, num_sentences, value_len, self.heads, self.head_dimension)
-        keys = keys.reshape(n, num_sentences, key_len, self.heads, self.head_dimension)
-        queries = query.reshape(n, num_sentences, query_len, self.heads, self.head_dimension)
 
         values = self.values(values)
         keys = self.keys(keys)
         queries = self.queries(queries)
+
+        # Split pieces into self.heads pieces
+        values = values.reshape(n, num_sentences, value_len, self.heads, self.head_dimension)
+        keys = keys.reshape(n, num_sentences, key_len, self.heads, self.head_dimension)
+        queries = queries.reshape(n, num_sentences, query_len, self.heads, self.head_dimension)
 
         # Multiply the queries with the keys. Q K^T = energy
         #   queries shape: (n, num_sent, query_len, heads, heads_dim)
@@ -74,6 +80,9 @@ class EntailmentSelfAttention(nn.Module):
             # Permute the columns around.
             # Repeat along final dim value_len times.
             # TODO Rigorously PROVE this is correct!
+            # TODO Turns out.. It's WRONG. Correct this to be similar to the old version!!
+            # TODO The mask is the issue.
+            #  It should be a TRIL(|_\ repeated along the dims logical OR with the sequence mask)
             mask_reshaped = mask_reshaped.unsqueeze(-1).repeat(1, 1, 1, self.heads)
             mask_reshaped = mask_reshaped.permute(0, 1, 3, 2)
             mask_reshaped = mask_reshaped.unsqueeze(-1).repeat((1, 1, 1, 1, value_len))
@@ -101,7 +110,7 @@ class EntailmentTransformerBlock(nn.Module):
 
         self.feed_forward = nn.Sequential(
             nn.Linear(embed_size, forward_expansion * embed_size),
-            nn.Sigmoid(),
+            nn.ReLU(),
             nn.Linear(forward_expansion * embed_size, embed_size)
         )
 
@@ -112,9 +121,16 @@ class EntailmentTransformerBlock(nn.Module):
 
     def forward(self, value, key, query, mask):
         attention = self.attention(value, key, query, mask)
-        x = self.dropout(self.norm1(attention + query))  # Skip connection
+        x = self.norm1(query + self.dropout(attention))  # Skip connection
+        forward = self.feed_forward(x)
+        out = self.norm2(x + self.dropout(forward))  # Skip connection
+
+        """ Original bad code:
+        attention = self.attention(value, key, query, mask)
+        x = self.droput(self.norm1(attention + query ))  # Skip connection
         forward = self.feed_forward(x)
         out = self.dropout(self.norm2(forward + x))  # Skip connection
+        """
         return out
 
 
@@ -171,7 +187,7 @@ class EntailmentTransformer(nn.Module):
         super(EntailmentTransformer, self).__init__()
 
         # Input shape: (batch_size, max_length, embed_size, num_sentences)
-        self.batch_size, self.num_sentences, self.max_length, self.embed_size = data_shape
+        _, self.num_sentences, self.max_length, self.embed_size = data_shape
         print('Batch Default Shape:', data_shape)
         self.hyper_params = hyper_parameters
         self.hyper_params.embed_size = self.embed_size
@@ -181,31 +197,36 @@ class EntailmentTransformer(nn.Module):
         self.encoder = EntailmentEncoder(self.num_sentences, max_seq_len,
                                          embed_size=self.embed_size, hyper_parameters=self.hyper_params)
 
-        self.fc1 = nn.Linear(self.encoder_flattened_size, self.embed_size * max_seq_len)
+        self.fc1 = nn.Linear(self.encoder_flattened_size, self.embed_size * max_seq_len, bias=True)
 
-        self.fc2 = nn.Linear(self.embed_size * max_seq_len, number_of_output_classes, bias=False)
+        self.fc2 = nn.Linear(self.embed_size * max_seq_len, self.embed_size, bias=True)
 
-        self.sigmoid = nn.Sigmoid()
+        self.fc_out = nn.Linear(self.embed_size, number_of_output_classes, bias=False)
+
+        self.relu = nn.ReLU()
 
     def forward(self, x, mask):
         # Input shape: (batch_size, num_sentences, embed_size, max_length)
+        batch_size = x.shape[0]
         x = self.encoder(x, mask)
+        x = x.masked_fill(mask == 0, 1e-20)
+        x = x.reshape(batch_size, self.encoder_flattened_size)
 
-        x = x.reshape(self.batch_size, self.encoder_flattened_size)
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
 
-        x = self.fc1(x)
-        x = self.sigmoid(x)
-        x = self.fc2(x)
+        x = self.fc_out(x)
 
         return x
 
 
 class EntailmentNet:
-    def __init__(self, word_vectors, data_loader: SNLI_DataLoader,
+    def __init__(self, word_vectors, data_loader: SNLI_DataLoader, path: str,
                  hyper_parameters: HyperParams = HyperParams()):
         self.data_loader = data_loader
         self.word_vectors = word_vectors
-        self.__hyper_parameters = hyper_parameters
+        self.hyper_parameters = hyper_parameters
+        self.file_path = path
 
         self.device = hyper_parameters.device
 
@@ -221,19 +242,21 @@ class EntailmentNet:
         self.transformer = EntailmentTransformer(self.input_shape, max_seq_len=data_loader.max_words_in_sentence_length,
                                                  hyper_parameters=hyper_parameters,
                                                  number_of_output_classes=self.num_classes)
-        self.optimizer = optim.Adadelta(self.transformer.parameters())
-        # self.optimizer = optim.SGD(self.transformer.parameters(), lr=0.001, momentum=0.9)
-
-    @property
-    def hyper_parameters(self):
-        return self.__hyper_parameters
+        self.optimizer = optim.Adadelta(self.transformer.parameters(), lr=self.hyper_parameters.learning_rate)
 
     @staticmethod
     def permute_inputs(inputs: torch.Tensor):
         return inputs.permute(0, 3, 1, 2)
 
     def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
+        if self.is_file:
+            raise ModelAlreadyTrainedError(self.file_path)
+
         number_of_iterations_per_epoch = len(self.data_loader) // self.batch_size
+        if self.batch_size > len(self.data_loader):
+            number_of_iterations_per_epoch = 1
+            self.batch_size = len(self.data_loader)
+            self.hyper_parameters.batch_size = self.batch_size
         for epoch in range(epochs):
             running_loss = 0.0
             for i in range(number_of_iterations_per_epoch):
@@ -243,7 +266,7 @@ class EntailmentNet:
                 batch = self.data_loader.load_batch_sequential(self.batch_size).to_model_data()
                 batch.clean_data()
 
-                inputs, masks = batch.to_tensors(self.word_vectors)
+                inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20)
                 inputs, masks = self.permute_inputs(inputs), self.permute_inputs(masks)
 
                 labels = batch.labels_encoding
@@ -257,8 +280,8 @@ class EntailmentNet:
                 predictions = self.minibatch_predictions(outputs)
                 print('MODEL OUTPUT:\n-----------------')
                 print(predictions)
-                print('LABELS:\n-----------------')
                 print(labels)
+                print('-'*30)
 
                 loss = criterion(outputs, labels)
                 loss.backward()
@@ -273,8 +296,27 @@ class EntailmentNet:
                 print('-' * 20)
 
         print('Finished Training.')
+
+        self.save_model()
+
+    @property
+    def is_file(self) -> bool:
+        return os.path.isfile(self.file_path)
+
+    def load_model(self) -> None:
+        print('-'*20)
+        print('Loading model...')
+        if not self.is_file:
+            raise FileNotFoundError
+        self.transformer = torch.load(self.file_path)
+        print('Model loaded!')
+        print('-' * 20)
+        return None
+
+    def save_model(self) -> None:
         print('Saving model...')
-        torch.save(self.transformer, 'data/BERT-MIKE-MODEL0/lstmmodelgpu.pth')
+        torch.save(self.transformer, self.file_path)
+        return None
 
     @staticmethod
     def print_available_devices() -> None:
