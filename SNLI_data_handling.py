@@ -128,6 +128,18 @@ class EntailmentModelBatch:
         padded_list = list_to_pad + [pad_value for _ in range(max_length - len(list_to_pad))]
         return padded_list
 
+    def to_tensors(self, word_vectors: GloveEmbedding):
+        # Make empty lists
+        sentences = [None for _ in range(self.data.shape[1] - 1)]
+        masks = sentences.copy()
+
+        # Fetch all the tensor info for each batch of sentences.
+        for i in range(len(sentences)):
+            sentences[i], masks[i] = self.__sentence_to_tensors(sentence_num=i + 1, word_vectors=word_vectors)
+
+        sentences, masks = self.__sentence_tensor_stack(sentences, masks)
+        return sentences, masks
+
     def __sentence_to_tensors(self, sentence_num: int,
                               word_vectors: GloveEmbedding, pad_value=0) -> (torch.Tensor, torch.Tensor):
         """ word_vectors must be same length for all words.
@@ -167,18 +179,6 @@ class EntailmentModelBatch:
         padding_mask_tensor = padding_mask_tensor.unsqueeze(-1).expand(*desired_mask_shape)
 
         return padded_tensor, padding_mask_tensor
-
-    def to_tensors(self, word_vectors: GloveEmbedding):
-        # Make empty lists
-        sentences = [None for _ in range(self.data.shape[1] - 1)]
-        masks = sentences.copy()
-
-        # Fetch all the tensor info for each batch of sentences.
-        for i in range(len(sentences)):
-            sentences[i], masks[i] = self.__sentence_to_tensors(sentence_num=i + 1, word_vectors=word_vectors)
-
-        sentences, masks = self.__sentence_tensor_stack(sentences, masks)
-        return sentences, masks
 
     def __sentence_tensor_stack(self,
                                 sentences,
