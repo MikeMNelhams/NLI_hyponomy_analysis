@@ -88,7 +88,7 @@ class EntailmentModelBatch:
     """ [[sentence1: str], [sentence2: str], [label: str]]"""
     """ Entailment is either 'contradiction': -1, 'neutral': 0, 'entailment': 1"""
 
-    label_encoding = {'entailment': 0,
+    class_label_encoding = {'entailment': 0,
                       'neutral': 1,
                       'contradiction': 2,
                       '-': 1}
@@ -145,7 +145,12 @@ class EntailmentModelBatch:
                                                                 pad_value=pad_value)
 
         sentences, masks = self.__sentence_tensor_stack(sentences, masks, pad_value=pad_value)
+        sentences, masks = self.__permute_tensor(sentences), self.__permute_tensor(masks)
         return sentences, masks
+
+    @staticmethod
+    def __permute_tensor(tensor: torch.Tensor):
+        return tensor.permute(0, 3, 1, 2)
 
     def __sentence_to_tensors(self, sentence_num: int,
                               word_vectors: GloveEmbedding, pad_value=0) -> (torch.Tensor, torch.Tensor):
@@ -226,7 +231,7 @@ class EntailmentModelBatch:
 
     def __get_labels_encoding(self) -> torch.tensor:
         label_column_number = self.data.shape[1] - 1
-        one_hot_labels = torch.tensor([self.label_encoding[label] for label in self.data[:, label_column_number]])
+        one_hot_labels = torch.tensor([self.class_label_encoding[label] for label in self.data[:, label_column_number]])
         if one_hot_labels.shape[0] == 1:
             return torch.squeeze(one_hot_labels)
         return one_hot_labels
@@ -337,7 +342,7 @@ class SNLI_DataLoader:
 
         return DictBatch([content], max_sequence_len=self.max_words_in_sentence_length)
 
-    def load_batch_sequential(self, batch_size: int, from_start: bool =False) -> DictBatch:
+    def _load_batch_sequential(self, batch_size: int, from_start: bool =False) -> DictBatch:
         """ Correct way to load data
 
         Very efficient
@@ -382,7 +387,7 @@ class SNLI_DataLoader:
 
         return DictBatch(content2, max_sequence_len=self.max_words_in_sentence_length)
 
-    def load_batch_random(self, batch_size: int) -> DictBatch:
+    def _load_batch_random(self, batch_size: int) -> DictBatch:
         """ O(File_size) load random lines"""
         # Uses reservoir sampling.
         # There is actually a FASTER way to do this using more complicated sampling:
@@ -403,6 +408,16 @@ class SNLI_DataLoader:
                     buffer[loc] = json.loads(line)
 
         return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
+
+    def load_clean_batch_sequential(self, batch_size: int, from_start: bool=False) -> EntailmentModelBatch:
+        batch_data = self._load_batch_sequential(batch_size, from_start=from_start).to_model_data()
+        batch_data.clean_data()
+        return batch_data
+
+    def load_clean_batch_random(self, batch_size: int) -> EntailmentModelBatch:
+        batch_data = self._load_batch_random(batch_size).to_model_data()
+        batch_data.clean_data()
+        return batch_data
 
 
 if __name__ == "__main__":

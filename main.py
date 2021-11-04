@@ -20,18 +20,21 @@ def main():
     train_loader = SNLI_DataLoader(train_small_path)
 
     # The SQLite database querying is pretty much better in every way that matters.
-    # Can get about speedup moving the SQLite database onto RAM(-disk) // SSD
+    # Can get a speedup moving the SQLite database onto RAM(-disk) // SSD
     # -------------------------------------------------------------------------------#
     #        SQLite         | 20-100ms QUERY |   2 seconds LOAD | 0   RAM | 5gb disk #
-    # Load from file to RAM | 1 - 20ms QUERY | 180 seconds LOAD | 5gb RAM | 6gb disk #
+    # Load from file to RAM | 1 - 20ms QUERY | 180 seconds LOAD | 5gb RAM | 5gb disk #
     # -------------------------------------------------------------------------------#
     word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
-    params = HyperParams(heads=5, batch_size=32, learning_rate=1, dropout=0.3)
+    params = HyperParams(heads=5, batch_size=64, learning_rate=1, dropout=0.3)
 
-    mike_net = EntailmentNet(word_vectors, train_loader, path='data/BERT-MIKE-MODEL0/test_small_model2.pth',
+    mike_net = EntailmentNet(word_vectors, train_loader, path='data/BERT-MIKE-MODEL0/test_small_model5.pth',
                              hyper_parameters=params)
     mike_net.print_available_devices()
-    mike_net.train(epochs=100, print_every=1)
+    mike_net.count_parameters()
+    # mike_net.train(epochs=400, print_every=1)
+
+    mike_net.test(train_loader)
 
 
 if __name__ == '__main__':

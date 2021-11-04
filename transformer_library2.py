@@ -1,4 +1,11 @@
+import warnings
+from typing import Any
+
 import os.path
+from file_operations import is_file
+import pandas as pd
+
+from prettytable import PrettyTable
 
 import numpy as np
 import torch
@@ -26,6 +33,64 @@ class HyperParams:
         self.learning_rate = learning_rate
 
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+
+
+class History:
+    """ Uses a csv file to save its loss and accuracy"""
+    def __init__(self, file_path: str):
+        self.__file_path = file_path
+
+        self.__loss = []
+        self.__accuracy = []
+
+        if self.is_file():
+            self.load()
+
+    def __len__(self):
+        return len(self.loss)
+
+    @property
+    def file_path(self):
+        return self.__file_path
+
+    @property
+    def loss(self):
+        return self.__loss
+
+    @property
+    def accuracy(self):
+        return self.__accuracy
+
+    def is_file(self) -> bool:
+        return is_file(self.file_path, '.csv')
+
+    def assert_not_empty(self) -> None:
+        if len(self) == 0:
+            print('No history has been provided! Loss/Accuracy empty!')
+            raise ValueError
+        return None
+
+    def step(self, loss, accuracy) -> None:
+        self.loss.append(loss)
+        self.accuracy.append(accuracy)
+        return None
+
+    def save(self) -> None:
+        self.assert_not_empty()
+        data_to_write = pd.DataFrame({'loss': self.loss, 'accuracy': self.accuracy})
+        # KNOWN INSPECTION BUG FOR TO_CSV()
+        # https://stackoverflow.com/questions/68787744/
+        #   pycharm-type-checker-expected-type-none-got-str-instead-when-using-pandas-d
+        # noinspection PyTypeChecker
+        data_to_write.to_csv(path_or_buf=self.file_path)
+        return None
+
+    def load(self) -> None:
+        assert is_file(self.file_path, '.csv'), FileNotFoundError
+        data_from_file = pd.read_csv(self.file_path)
+        self.__loss = data_from_file['loss'].tolist()
+        self.__accuracy = data_from_file['accuracy'].tolist()
+        return None
 
 
 class EntailmentSelfAttention(nn.Module):
@@ -79,13 +144,10 @@ class EntailmentSelfAttention(nn.Module):
             # Repeat along final dim self.heads times
             # Permute the columns around.
             # Repeat along final dim value_len times.
-            # TODO Rigorously PROVE this is correct!
-            # TODO Turns out.. It's WRONG. Correct this to be similar to the old version!!
-            # TODO The mask is the issue.
-            #  It should be a TRIL(|_\ repeated along the dims logical OR with the sequence mask)
-            mask_reshaped = mask_reshaped.unsqueeze(-1).repeat(1, 1, 1, self.heads)
+            # TODO Rigorously PROVE this is correct
+            mask_reshaped = mask_reshaped.unsqueeze(-1).expand(-1, -1, -1, self.heads)
             mask_reshaped = mask_reshaped.permute(0, 1, 3, 2)
-            mask_reshaped = mask_reshaped.unsqueeze(-1).repeat((1, 1, 1, 1, value_len))
+            mask_reshaped = mask_reshaped.unsqueeze(-1).expand(-1, -1, -1, -1, value_len)
 
             energy = energy.masked_fill(mask_reshaped == 0, float("-1e20"))
 
@@ -104,33 +166,33 @@ class EntailmentSelfAttention(nn.Module):
 
 
 class EntailmentTransformerBlock(nn.Module):
-    def __init__(self, embed_size: int, heads: int, dropout, forward_expansion):
+    def __init__(self, embed_size: int, hyper_params: HyperParams=HyperParams()):
         super(EntailmentTransformerBlock, self).__init__()
-        self.attention = EntailmentSelfAttention(embed_size=embed_size, heads=heads)
 
+        self.embed_size = embed_size
+        self.hyper_params = hyper_params
+
+        # Hyper Parameter unpacking
+        self.heads = self.hyper_params.heads
+        self.forward_expansion = self.hyper_params.forward_expansion
+        self.dropout = self.hyper_params.dropout
+
+        # Model structure
+        self.attention = EntailmentSelfAttention(embed_size=self.embed_size, heads=self.heads)
         self.feed_forward = nn.Sequential(
-            nn.Linear(embed_size, forward_expansion * embed_size),
+            nn.Linear(embed_size, self.forward_expansion * embed_size),
             nn.ReLU(),
-            nn.Linear(forward_expansion * embed_size, embed_size)
+            nn.Linear(self.forward_expansion * embed_size, embed_size)
         )
-
         self.norm1 = nn.LayerNorm(embed_size)
         self.norm2 = nn.LayerNorm(embed_size)
-
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(self.dropout)
 
     def forward(self, value, key, query, mask):
         attention = self.attention(value, key, query, mask)
         x = self.norm1(query + self.dropout(attention))  # Skip connection
         forward = self.feed_forward(x)
         out = self.norm2(x + self.dropout(forward))  # Skip connection
-
-        """ Original bad code:
-        attention = self.attention(value, key, query, mask)
-        x = self.droput(self.norm1(attention + query ))  # Skip connection
-        forward = self.feed_forward(x)
-        out = self.dropout(self.norm2(forward + x))  # Skip connection
-        """
         return out
 
 
@@ -141,43 +203,35 @@ class EntailmentEncoder(nn.Module):
 
         # Input shape: (batch_size, max_length, embed_size, num_sentences)
         self.num_sentences = num_sentences
-        self.hyper_params = hyper_parameters
         self.max_length = max_seq_len
         self.embed_size = embed_size
+        self.hyper_params = hyper_parameters
 
+        # Model structure
         self.position_embedding = nn.Embedding(self.max_length, self.embed_size)
-
         self.layers = nn.ModuleList(
             [
-                EntailmentTransformerBlock(self.embed_size,
-                                           self.hyper_params.heads,
-                                           dropout=self.hyper_params.dropout,
-                                           forward_expansion=self.hyper_params.forward_expansion)
+                EntailmentTransformerBlock(self.embed_size, self.hyper_params)
                 for _ in range(self.hyper_params.num_layers)
             ]
         )
-
         self.dropout = nn.Dropout(self.hyper_params.dropout)
 
     def forward(self, x, mask):
-        batch_size, num_sentences, sequence_length, embed_size = x.shape
+        batch_size, num_sentences, sequence_length, _ = x.shape
         assert num_sentences == self.num_sentences
+
         # Positional encoding
         positions = torch.arange(0, sequence_length).expand(batch_size, sequence_length)
-
-        # Shape (b, 2, seq_len, e)
         positions_out = self.position_embedding(positions)
-
-        positions_out = positions_out.unsqueeze(-1).repeat((1, 1, 1, num_sentences))  # Duplicate across num sentences
+        positions_out = positions_out.unsqueeze(-1).expand(-1, -1, -1, num_sentences)  # Duplicate across num sentences
         positions_out = positions_out.permute(0, 3, 1, 2)
-
         out = self.dropout(x + positions_out)
 
         # Shape (b, max_len, e, num_sentences)
         for layer in self.layers:
             # Value, Key, Query, mask
             out = layer(out, out, out, mask)
-
         return out
 
 
@@ -194,15 +248,12 @@ class EntailmentTransformer(nn.Module):
 
         self.encoder_flattened_size = self.num_sentences * max_seq_len * self.embed_size
 
+        # Model structure
         self.encoder = EntailmentEncoder(self.num_sentences, max_seq_len,
                                          embed_size=self.embed_size, hyper_parameters=self.hyper_params)
-
-        self.fc1 = nn.Linear(self.encoder_flattened_size, self.embed_size * max_seq_len, bias=True)
-
-        self.fc2 = nn.Linear(self.embed_size * max_seq_len, self.embed_size, bias=True)
-
-        self.fc_out = nn.Linear(self.embed_size, number_of_output_classes, bias=False)
-
+        self.fc1 = nn.Linear(self.encoder_flattened_size, max_seq_len, bias=True)
+        self.fc2 = nn.Linear(max_seq_len, 75, bias=True)
+        self.fc_out = nn.Linear(75, number_of_output_classes, bias=False)
         self.relu = nn.ReLU()
 
     def forward(self, x, mask):
@@ -211,12 +262,9 @@ class EntailmentTransformer(nn.Module):
         x = self.encoder(x, mask)
         x = x.masked_fill(mask == 0, 1e-20)
         x = x.reshape(batch_size, self.encoder_flattened_size)
-
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc2(x))
-
         x = self.fc_out(x)
-
         return x
 
 
@@ -236,17 +284,17 @@ class EntailmentNet:
         self.input_shape = (self.batch_size, self.num_sentences,
                             data_loader.max_words_in_sentence_length, self.embed_size)
 
-        # TODO make this auto from data loader
-        self.num_classes = 3
+        # Model structure
+        self.num_classes = 3  # Definition of problem means this is always 3 (4 if you want a 'not sure')
 
-        self.transformer = EntailmentTransformer(self.input_shape, max_seq_len=data_loader.max_words_in_sentence_length,
-                                                 hyper_parameters=hyper_parameters,
-                                                 number_of_output_classes=self.num_classes)
-        self.optimizer = optim.Adadelta(self.transformer.parameters(), lr=self.hyper_parameters.learning_rate)
-
-    @staticmethod
-    def permute_inputs(inputs: torch.Tensor):
-        return inputs.permute(0, 3, 1, 2)
+        if self.is_file:
+            self.load_model()
+        else:
+            self.transformer = EntailmentTransformer(self.input_shape,
+                                                     max_seq_len=data_loader.max_words_in_sentence_length,
+                                                     hyper_parameters=hyper_parameters,
+                                                     number_of_output_classes=self.num_classes)
+            self.optimizer = optim.Adadelta(self.transformer.parameters(), lr=self.hyper_parameters.learning_rate)
 
     def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
         if self.is_file:
@@ -257,47 +305,105 @@ class EntailmentNet:
             number_of_iterations_per_epoch = 1
             self.batch_size = len(self.data_loader)
             self.hyper_parameters.batch_size = self.batch_size
+        total_steps = epochs * number_of_iterations_per_epoch
         for epoch in range(epochs):
             running_loss = 0.0
             for i in range(number_of_iterations_per_epoch):
-                percentage_complete = round(i*100/number_of_iterations_per_epoch, 1)
+                percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i))/total_steps, 2)
                 print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
 
-                batch = self.data_loader.load_batch_sequential(self.batch_size).to_model_data()
-                batch.clean_data()
-
-                inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20)
-                inputs, masks = self.permute_inputs(inputs), self.permute_inputs(masks)
-
-                labels = batch.labels_encoding
-                del batch
-
-                # Zero the parameter gradients.
-                self.optimizer.zero_grad()
-
-                # Forward -> backward -> optimizer
-                outputs = self.transformer(inputs, masks)
-                predictions = self.minibatch_predictions(outputs)
-                print('MODEL OUTPUT:\n-----------------')
-                print(predictions)
-                print(labels)
-                print('-'*30)
-
-                loss = criterion(outputs, labels)
-                loss.backward()
-                self.optimizer.step()
+                loss, accuracy = self.__train_batch(criterion)
 
                 # print statistics
                 running_loss += loss.item()
                 if i % print_every == print_every - 1:  # print every p_e mini-batches
                     print('[%d, %5d] loss: %.3f \t accuracy: %.2f' %
-                          (epoch + 1, i + 1, running_loss / print_every, 100 * self.accuracy(predictions, labels)))
+                          (epoch + 1, i + 1, running_loss / print_every, 100 * accuracy))
                     running_loss = 0.0
                 print('-' * 20)
 
         print('Finished Training.')
 
         self.save_model()
+        return None
+
+    def __train_batch(self, criterion=nn.CrossEntropyLoss()) -> Any:
+        batch = self.data_loader.load_clean_batch_random(self.batch_size)
+
+        inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20)
+
+        labels = batch.labels_encoding
+        del batch
+
+        # Zero the parameter gradients.
+        self.optimizer.zero_grad()
+
+        # Forward -> backward -> optimizer
+        outputs = self.transformer(inputs, masks)
+        predictions = self.__minibatch_predictions(outputs)
+        print('MODEL OUTPUT:\n-----------------')
+        print(predictions)
+        print(labels)
+        print('-' * 30)
+
+        loss = criterion(outputs, labels)
+        loss.backward()
+        self.optimizer.step()
+        accuracy = self.accuracy(predictions, labels)
+        return loss, accuracy
+
+    def predict(self, batch: torch.Tensor, batch_mask: torch.Tensor = None) -> torch.Tensor:
+        # Switch to eval mode, then switch back at the end.
+        self.transformer.eval()
+        self.hyper_parameters.dropout = 0
+
+        if batch_mask is None:
+            prediction = self.transformer(batch)
+        else:
+            prediction = self.transformer(batch, batch_mask)
+
+        prediction = torch.argmax(prediction, dim=1)
+        self.transformer.train()
+        return prediction
+
+    def test(self, test_data_loader: SNLI_DataLoader, test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
+        if not self.is_file:
+            self.__warn_not_trained()
+
+        self.transformer.eval()
+        max_batch_size = min(len(test_data_loader), test_batch_size)
+
+        number_of_test_iterations = len(test_data_loader) // max_batch_size
+
+        number_guessed_correctly = 0
+        loss = 0
+        for i in range(number_of_test_iterations):
+            test_data = test_data_loader.load_clean_batch_sequential(batch_size=max_batch_size)
+            lines, masks = test_data.to_tensors(self.word_vectors, pad_value=1e-20)
+            labels = test_data.labels_encoding
+            outputs = self.transformer(lines, masks)
+
+            for label, prediction in zip(labels, torch.argmax(outputs, dim=1)):
+                number_guessed_correctly += int(label == prediction)
+                loss += criterion(outputs, labels)
+
+        accuracy = number_guessed_correctly / (number_of_test_iterations * max_batch_size)
+        print(f'Total loss: {round(float(loss), 4)}. Total accuracy: {round(accuracy * 100, 2)}%')
+        self.transformer.train()
+        return loss, accuracy
+
+    def count_parameters(self):
+        table = PrettyTable(["Modules", "Parameters"])
+        total_params = 0
+        for name, parameter in self.transformer.named_parameters():
+            if not parameter.requires_grad:
+                continue
+            param = parameter.numel()
+            table.add_row([name, param])
+            total_params += param
+        print(table)
+        print(f"Total Trainable Params: {total_params}")
+        return total_params
 
     @property
     def is_file(self) -> bool:
@@ -330,7 +436,7 @@ class EntailmentNet:
         return None
 
     @staticmethod
-    def minibatch_predictions(x: torch.Tensor) -> torch.Tensor:
+    def __minibatch_predictions(x: torch.Tensor) -> torch.Tensor:
         return torch.argmax(x, dim=1)
 
     @staticmethod
@@ -340,6 +446,11 @@ class EntailmentNet:
             correct += int(x_row == y_row)
         accuracy = correct / int(x.shape[0])
         return accuracy
+
+    @staticmethod
+    def __warn_not_trained() -> None:
+        warnings.warn('WARNING: The model is not trained yet!')
+        return None
 
 
 def main():
