@@ -13,7 +13,7 @@ import numpy as np
 import json
 
 from word_operations import WordParser, count_max_sequence_length
-from file_operations import file_without_extension
+from file_operations import file_path_without_extension
 from nltk.tokenize import word_tokenize
 from embeddings import GloveEmbedding
 
@@ -271,7 +271,7 @@ class SNLI_DataLoader:
     def __init__(self, file_path: str, max_sequence_length=None):
         self.__file_path = file_path
         self.__file_dir_path = os.path.dirname(file_path)
-        self.__max_len_save_path = file_without_extension(self.__file_path) + '_max_len.txt'
+        self.__max_len_save_path = file_path_without_extension(self.__file_path) + '_max_len.txt'
 
         self.file_size = self.__get_number_lines()
 
@@ -302,7 +302,7 @@ class SNLI_DataLoader:
             print(f'Iter: {i} of {number_of_iterations}')
             print('MAX LEN:', max_len)
             print('-'*20)
-            batch = self.load_batch_sequential(file_load_size)
+            batch = self._load_batch_sequential(file_load_size)
             sentence1_max_len = batch.count_max_words_for_sentence_field('sentence1')
             sentence2_max_len = batch.count_max_words_for_sentence_field('sentence2')
             max_len = max((sentence1_max_len, sentence2_max_len, max_len))
@@ -382,7 +382,7 @@ class SNLI_DataLoader:
 
         if overlap:
             remaining_batch_size = batch_size - (batch_end_index - batch_start_index)
-            content3 = self.load_batch_sequential(remaining_batch_size, from_start=True)
+            content3 = self._load_batch_sequential(remaining_batch_size, from_start=True)
             return DictBatch(content2 + content3.data, max_sequence_len=self.max_words_in_sentence_length)
 
         return DictBatch(content2, max_sequence_len=self.max_words_in_sentence_length)

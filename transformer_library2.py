@@ -2,7 +2,7 @@ import warnings
 from typing import Any
 
 import os.path
-from file_operations import is_file
+from file_operations import is_file, file_path_without_extension, file_path_is_of_extension
 import pandas as pd
 
 from prettytable import PrettyTable
@@ -11,6 +11,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
+import matplotlib.pyplot as plt
 
 from SNLI_data_handling import SNLI_DataLoader
 
@@ -37,8 +39,9 @@ class HyperParams:
 
 class History:
     """ Uses a csv file to save its loss and accuracy"""
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str, precision: int = 4):
         self.__file_path = file_path
+        self.__precision = precision
 
         self.__loss = []
         self.__accuracy = []
@@ -52,6 +55,10 @@ class History:
     @property
     def file_path(self):
         return self.__file_path
+
+    @property
+    def precision(self):
+        return self.__precision
 
     @property
     def loss(self):
@@ -71,12 +78,13 @@ class History:
         return None
 
     def step(self, loss, accuracy) -> None:
-        self.loss.append(loss)
-        self.accuracy.append(accuracy)
+        self.loss.append(round(loss, self.precision))
+        self.accuracy.append(round(accuracy, self.precision))
         return None
 
     def save(self) -> None:
         self.assert_not_empty()
+        print('Saving Model History...')
         data_to_write = pd.DataFrame({'loss': self.loss, 'accuracy': self.accuracy})
         # KNOWN INSPECTION BUG FOR TO_CSV()
         # https://stackoverflow.com/questions/68787744/
@@ -87,9 +95,28 @@ class History:
 
     def load(self) -> None:
         assert is_file(self.file_path, '.csv'), FileNotFoundError
+        print('Loading Model History...')
         data_from_file = pd.read_csv(self.file_path)
         self.__loss = data_from_file['loss'].tolist()
         self.__accuracy = data_from_file['accuracy'].tolist()
+        return None
+
+    def plot_loss(self) -> None:
+        assert self.is_file(), FileNotFoundError
+        epoch_steps = range(len(self))
+        plt.plot(epoch_steps, self.loss)
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.show()
+        return None
+
+    def plot_accuracy(self) -> None:
+        assert self.is_file(), FileNotFoundError
+        epoch_steps = range(len(self))
+        plt.plot(epoch_steps, self.accuracy)
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.show()
         return None
 
 
@@ -240,7 +267,7 @@ class EntailmentTransformer(nn.Module):
                  hyper_parameters: HyperParams = HyperParams()):
         super(EntailmentTransformer, self).__init__()
 
-        # Input shape: (batch_size, max_length, embed_size, num_sentences)
+        # Input shape: (batch_size, num_sentences, max_length, embed_size)
         _, self.num_sentences, self.max_length, self.embed_size = data_shape
         print('Batch Default Shape:', data_shape)
         self.hyper_params = hyper_parameters
@@ -268,13 +295,43 @@ class EntailmentTransformer(nn.Module):
         return x
 
 
+class NeuralNetwork(nn.Module):
+    def __init__(self, data_shape, max_seq_len: int, number_of_output_classes=3,
+                 hyper_parameters: HyperParams = HyperParams()):
+        super(NeuralNetwork, self).__init__()
+        self.hyper_parameters = hyper_parameters
+
+        # Input shape: n, num_sentences, max_seq_len, embed_size
+        _, self.num_sentences, self.max_length, self.embed_size = data_shape
+        self.encoder_flattened_size = self.num_sentences * max_seq_len * self.embed_size
+
+        self.fc1 = nn.Linear(self.encoder_flattened_size, 1000, bias=True)
+        self.fc2 = nn.Linear(1000, 75, bias=True)
+        self.fc_out = nn.Linear(75, number_of_output_classes, bias=False)
+        self.relu = nn.ReLU()
+
+    def forward(self, x, mask):
+        # Input shape: (batch_size, num_sentences, embed_size, max_length)
+        batch_size = x.shape[0]
+        x = x.masked_fill(mask == 0, 1e-20)
+        x = x.reshape(batch_size, self.encoder_flattened_size)
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        x = self.fc_out(x)
+        return x
+
+
 class EntailmentNet:
     def __init__(self, word_vectors, data_loader: SNLI_DataLoader, path: str,
-                 hyper_parameters: HyperParams = HyperParams()):
+                 hyper_parameters: HyperParams = HyperParams(), classifier_model=EntailmentTransformer):
         self.data_loader = data_loader
         self.word_vectors = word_vectors
         self.hyper_parameters = hyper_parameters
+        assert file_path_is_of_extension(path, '.pth'), FileNotFoundError
         self.file_path = path
+        self.history_file_path = self.__history_save_path()
+
+        self.history = History(self.history_file_path)
 
         self.device = hyper_parameters.device
 
@@ -290,10 +347,10 @@ class EntailmentNet:
         if self.is_file:
             self.load_model()
         else:
-            self.transformer = EntailmentTransformer(self.input_shape,
-                                                     max_seq_len=data_loader.max_words_in_sentence_length,
-                                                     hyper_parameters=hyper_parameters,
-                                                     number_of_output_classes=self.num_classes)
+            self.transformer = classifier_model(self.input_shape,
+                                                max_seq_len=data_loader.max_words_in_sentence_length,
+                                                hyper_parameters=hyper_parameters,
+                                                number_of_output_classes=self.num_classes)
             self.optimizer = optim.Adadelta(self.transformer.parameters(), lr=self.hyper_parameters.learning_rate)
 
     def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
@@ -308,6 +365,7 @@ class EntailmentNet:
         total_steps = epochs * number_of_iterations_per_epoch
         for epoch in range(epochs):
             running_loss = 0.0
+            running_accuracy = 0.0
             for i in range(number_of_iterations_per_epoch):
                 percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i))/total_steps, 2)
                 print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
@@ -316,15 +374,18 @@ class EntailmentNet:
 
                 # print statistics
                 running_loss += loss.item()
-                if i % print_every == print_every - 1:  # print every p_e mini-batches
-                    print('[%d, %5d] loss: %.3f \t accuracy: %.2f' %
-                          (epoch + 1, i + 1, running_loss / print_every, 100 * accuracy))
-                    running_loss = 0.0
+                running_accuracy += accuracy
+                if i % print_every == print_every - 1:
+                    print('[%d, %5d] loss: %.4f \t accuracy: %.2f' %
+                          (epoch + 1, i + 1, float(loss), 100 * accuracy))
                 print('-' * 20)
+            running_accuracy = running_accuracy / number_of_iterations_per_epoch
+            self.history.step(float(running_loss), running_accuracy)
 
         print('Finished Training.')
 
         self.save_model()
+        self.history.save()
         return None
 
     def __train_batch(self, criterion=nn.CrossEntropyLoss()) -> Any:
@@ -341,7 +402,7 @@ class EntailmentNet:
         # Forward -> backward -> optimizer
         outputs = self.transformer(inputs, masks)
         predictions = self.__minibatch_predictions(outputs)
-        print('MODEL OUTPUT:\n-----------------')
+        print('MODEL OUTPUT:\n' + '-'*20)
         print(predictions)
         print(labels)
         print('-' * 30)
@@ -423,6 +484,9 @@ class EntailmentNet:
         print('Saving model...')
         torch.save(self.transformer, self.file_path)
         return None
+
+    def __history_save_path(self):
+        return file_path_without_extension(self.file_path) + '_history.csv'
 
     @staticmethod
     def print_available_devices() -> None:

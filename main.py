@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from SNLI_data_handling import SNLI_DataLoader
 from Hyponyms import KS, Hyponyms, DenseHyponymMatrices
 
-from transformer_library2 import EntailmentNet, HyperParams
+from transformer_library2 import EntailmentNet, HyperParams, NeuralNetwork
 
 
 def main():
@@ -17,7 +17,8 @@ def main():
 
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
 
-    train_loader = SNLI_DataLoader(train_small_path)
+    train_loader = SNLI_DataLoader(train_path)
+    # test_loader = SNLI_DataLoader(test_path)
 
     # The SQLite database querying is pretty much better in every way that matters.
     # Can get a speedup moving the SQLite database onto RAM(-disk) // SSD
@@ -28,13 +29,13 @@ def main():
     word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     params = HyperParams(heads=5, batch_size=64, learning_rate=1, dropout=0.3)
 
-    mike_net = EntailmentNet(word_vectors, train_loader, path='data/BERT-MIKE-MODEL0/test_small_model5.pth',
-                             hyper_parameters=params)
-    mike_net.print_available_devices()
+    mike_net = EntailmentNet(word_vectors, train_loader, path='data/models/nn/test_model0.pth',
+                             hyper_parameters=params, classifier_model=NeuralNetwork)
     mike_net.count_parameters()
-    # mike_net.train(epochs=400, print_every=1)
-
-    mike_net.test(train_loader)
+    mike_net.train(epochs=2, print_every=1)
+    # mike_net.history.plot_accuracy()
+    # mike_net.history.plot_loss()
+    # mike_net.test(test_loader)
 
 
 if __name__ == '__main__':
