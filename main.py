@@ -2,10 +2,9 @@ import embeddings_library as embed
 
 from dotenv import load_dotenv
 
-from SNLI_data_handling import SNLI_DataLoader
-from Hyponyms import KS, Hyponyms, DenseHyponymMatrices
+from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
 
-from transformer_library2 import EntailmentNet, HyperParams, NeuralNetwork
+from NLI_hyponomy_analysis.models.transformer_library2 import EntailmentNet, HyperParams, NeuralNetwork
 
 
 def main():
@@ -32,9 +31,9 @@ def main():
     mike_net = EntailmentNet(word_vectors, train_loader, path='data/models/nn/test_model0.pth',
                              hyper_parameters=params, classifier_model=NeuralNetwork)
     mike_net.count_parameters()
-    mike_net.train(epochs=2, print_every=1)
-    # mike_net.history.plot_accuracy()
-    # mike_net.history.plot_loss()
+    # mike_net.train(epochs=2, print_every=1)
+    mike_net.history.plot_accuracy()
+    mike_net.history.plot_loss()
     # mike_net.test(test_loader)
 
 

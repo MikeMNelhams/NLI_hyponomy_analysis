@@ -1,7 +1,7 @@
 import json
 import pickle
 import os
-import file_operations
+from NLI_hyponomy_analysis.data_pipeline import file_operations
 from warnings import warn
 
 import random

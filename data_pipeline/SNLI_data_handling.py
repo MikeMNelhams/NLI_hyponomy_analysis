@@ -421,4 +421,4 @@ class SNLI_DataLoader:
 
 
 if __name__ == "__main__":
-    test_data = SNLI_DataLoader("data/snli_1.0/snli_1.0_test.jsonl")
+    test_data = SNLI_DataLoader("../data/snli_1.0/snli_1.0_test.jsonl")

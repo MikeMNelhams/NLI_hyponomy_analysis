@@ -380,6 +380,7 @@ class EntailmentNet:
                           (epoch + 1, i + 1, float(loss), 100 * accuracy))
                 print('-' * 20)
             running_accuracy = running_accuracy / number_of_iterations_per_epoch
+            running_loss = running_loss / number_of_iterations_per_epoch
             self.history.step(float(running_loss), running_accuracy)
 
         print('Finished Training.')
