@@ -1,5 +1,5 @@
 import unittest
-from NLI_hyponomy_analysis.models.transformer_library import *
+from NLI_hyponomy_analysis.transformer_library import *
 
 
 class BasicTest(unittest.TestCase):

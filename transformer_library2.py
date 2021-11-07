@@ -2,7 +2,10 @@ import warnings
 from typing import Any
 
 import os.path
-from file_operations import is_file, file_path_without_extension, file_path_is_of_extension
+
+from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension, file_path_is_of_extension
+from NLI_hyponomy_analysis.data_pipeline import SNLI_data_handling
+
 import pandas as pd
 
 from prettytable import PrettyTable
@@ -13,9 +16,6 @@ import torch.nn as nn
 import torch.optim as optim
 
 import matplotlib.pyplot as plt
-
-from SNLI_data_handling import SNLI_DataLoader
-
 
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
 #   Paper: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
@@ -322,7 +322,7 @@ class NeuralNetwork(nn.Module):
 
 
 class EntailmentNet:
-    def __init__(self, word_vectors, data_loader: SNLI_DataLoader, path: str,
+    def __init__(self, word_vectors, data_loader: SNLI_data_handling.SNLI_DataLoader, path: str,
                  hyper_parameters: HyperParams = HyperParams(), classifier_model=EntailmentTransformer):
         self.data_loader = data_loader
         self.word_vectors = word_vectors
@@ -347,11 +347,11 @@ class EntailmentNet:
         if self.is_file:
             self.load_model()
         else:
-            self.transformer = classifier_model(self.input_shape,
+            self.model = classifier_model(self.input_shape,
                                                 max_seq_len=data_loader.max_words_in_sentence_length,
                                                 hyper_parameters=hyper_parameters,
-                                                number_of_output_classes=self.num_classes)
-            self.optimizer = optim.Adadelta(self.transformer.parameters(), lr=self.hyper_parameters.learning_rate)
+                                                number_of_output_classes=self.num_classes).to(self.device)
+            self.optimizer = optim.Adadelta(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
 
     def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
         if self.is_file:
@@ -368,17 +368,18 @@ class EntailmentNet:
             running_accuracy = 0.0
             for i in range(number_of_iterations_per_epoch):
                 percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i))/total_steps, 2)
-                print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
-
+                should_print = i % print_every == print_every - 1
+                if should_print:
+                    print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
                 loss, accuracy = self.__train_batch(criterion)
 
                 # print statistics
                 running_loss += loss.item()
                 running_accuracy += accuracy
-                if i % print_every == print_every - 1:
+                if should_print:
                     print('[%d, %5d] loss: %.4f \t accuracy: %.2f' %
                           (epoch + 1, i + 1, float(loss), 100 * accuracy))
-                print('-' * 20)
+                    print('-' * 20)
             running_accuracy = running_accuracy / number_of_iterations_per_epoch
             running_loss = running_loss / number_of_iterations_per_epoch
             self.history.step(float(running_loss), running_accuracy)
@@ -397,16 +398,17 @@ class EntailmentNet:
         labels = batch.labels_encoding
         del batch
 
+        # Put all on GPU
+        inputs = inputs.to(self.device)
+        masks = masks.to(self.device)
+        labels = labels.to(self.device)
+
         # Zero the parameter gradients.
         self.optimizer.zero_grad()
 
         # Forward -> backward -> optimizer
-        outputs = self.transformer(inputs, masks)
+        outputs = self.model(inputs, masks)
         predictions = self.__minibatch_predictions(outputs)
-        print('MODEL OUTPUT:\n' + '-'*20)
-        print(predictions)
-        print(labels)
-        print('-' * 30)
 
         loss = criterion(outputs, labels)
         loss.backward()
@@ -416,23 +418,23 @@ class EntailmentNet:
 
     def predict(self, batch: torch.Tensor, batch_mask: torch.Tensor = None) -> torch.Tensor:
         # Switch to eval mode, then switch back at the end.
-        self.transformer.eval()
+        self.model.eval()
         self.hyper_parameters.dropout = 0
 
         if batch_mask is None:
-            prediction = self.transformer(batch)
+            prediction = self.model(batch)
         else:
-            prediction = self.transformer(batch, batch_mask)
+            prediction = self.model(batch, batch_mask)
 
         prediction = torch.argmax(prediction, dim=1)
-        self.transformer.train()
+        self.model.train()
         return prediction
 
-    def test(self, test_data_loader: SNLI_DataLoader, test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
+    def test(self, test_data_loader: SNLI_data_handling.SNLI_DataLoader, test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
         if not self.is_file:
             self.__warn_not_trained()
 
-        self.transformer.eval()
+        self.model.eval()
         max_batch_size = min(len(test_data_loader), test_batch_size)
 
         number_of_test_iterations = len(test_data_loader) // max_batch_size
@@ -443,7 +445,7 @@ class EntailmentNet:
             test_data = test_data_loader.load_clean_batch_sequential(batch_size=max_batch_size)
             lines, masks = test_data.to_tensors(self.word_vectors, pad_value=1e-20)
             labels = test_data.labels_encoding
-            outputs = self.transformer(lines, masks)
+            outputs = self.model(lines, masks)
 
             for label, prediction in zip(labels, torch.argmax(outputs, dim=1)):
                 number_guessed_correctly += int(label == prediction)
@@ -451,13 +453,13 @@ class EntailmentNet:
 
         accuracy = number_guessed_correctly / (number_of_test_iterations * max_batch_size)
         print(f'Total loss: {round(float(loss), 4)}. Total accuracy: {round(accuracy * 100, 2)}%')
-        self.transformer.train()
+        self.model.train()
         return loss, accuracy
 
     def count_parameters(self):
         table = PrettyTable(["Modules", "Parameters"])
         total_params = 0
-        for name, parameter in self.transformer.named_parameters():
+        for name, parameter in self.model.named_parameters():
             if not parameter.requires_grad:
                 continue
             param = parameter.numel()
@@ -476,14 +478,14 @@ class EntailmentNet:
         print('Loading model...')
         if not self.is_file:
             raise FileNotFoundError
-        self.transformer = torch.load(self.file_path)
+        self.model = torch.load(self.file_path)
         print('Model loaded!')
         print('-' * 20)
         return None
 
     def save_model(self) -> None:
         print('Saving model...')
-        torch.save(self.transformer, self.file_path)
+        torch.save(self.model, self.file_path)
         return None
 
     def __history_save_path(self):
@@ -520,7 +522,6 @@ class EntailmentNet:
 
 def main():
     pass
-
 
 if __name__ == "__main__":
     main()

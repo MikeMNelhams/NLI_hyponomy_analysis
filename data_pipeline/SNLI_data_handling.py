@@ -12,8 +12,8 @@ import numpy as np
 
 import json
 
-from word_operations import WordParser, count_max_sequence_length
-from file_operations import file_path_without_extension
+from ..word_operations import WordParser, count_max_sequence_length
+from ..data_pipeline.file_operations import file_path_without_extension
 from nltk.tokenize import word_tokenize
 from embeddings import GloveEmbedding
 
@@ -421,4 +421,4 @@ class SNLI_DataLoader:
 
 
 if __name__ == "__main__":
-    test_data = SNLI_DataLoader("../data/snli_1.0/snli_1.0_test.jsonl")
+    pass
