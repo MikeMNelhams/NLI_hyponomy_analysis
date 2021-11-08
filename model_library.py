@@ -1,10 +1,9 @@
-import warnings
-from typing import Any
+from abc import ABC, abstractmethod
 
 import os.path
 
-from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension, file_path_is_of_extension
-from NLI_hyponomy_analysis.data_pipeline import SNLI_data_handling
+from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension
+from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, JSON_writer
 
 import pandas as pd
 
@@ -17,17 +16,14 @@ import torch.optim as optim
 
 import matplotlib.pyplot as plt
 
+
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
 #   Paper: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
-class ModelAlreadyTrainedError(Exception):
-    def __init__(self, file_path: str):
-        super().__init__(f'Model cannot train, since it already has been trained and saved to: {file_path}')
 
 
 class HyperParams:
     def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 8, dropout: float = 0,
-                 device="cuda", batch_size: int = 256, learning_rate: float = 0.1):
-        self.num_layers = num_layers
+                 device="cuda", batch_size: int = 256, learning_rate: float = 0.1, optimizer=optim.Adadelta):
         self.forward_expansion = forward_expansion
         self.heads = heads
         self.dropout = dropout
@@ -35,6 +31,18 @@ class HyperParams:
         self.learning_rate = learning_rate
 
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+
+        # Read Only Fields
+        self.__optimizer = optimizer
+        self.__num_layers = num_layers
+
+    @property
+    def optimizer(self):
+        return self.__optimizer
+
+    @property
+    def num_layers(self):
+        return self.__num_layers
 
 
 class History:
@@ -118,6 +126,20 @@ class History:
         plt.ylabel('Accuracy')
         plt.show()
         return None
+
+
+class AdditionalInformation(JSON_writer):
+    def __init__(self, file_path: str):
+        super(AdditionalInformation, self).__init__(file_path)
+        self.file_path = file_path
+
+        self.data = {'total_runtime': 0}
+
+    def add_runtime(self, runtime: float):
+        self.data['total_runtime'] += runtime
+
+    def reset_runtime(self):
+        self.data['total_runtime'] = 0
 
 
 class EntailmentSelfAttention(nn.Module):
@@ -262,199 +284,51 @@ class EntailmentEncoder(nn.Module):
         return out
 
 
-class EntailmentTransformer(nn.Module):
-    def __init__(self, data_shape, max_seq_len: int, number_of_output_classes=3,
+class AbstractClassifierModel(ABC):
+    def __init__(self, data_loader, file_path: str, classifier_model, embed_size: int, input_shape,
                  hyper_parameters: HyperParams = HyperParams()):
-        super(EntailmentTransformer, self).__init__()
-
-        # Input shape: (batch_size, num_sentences, max_length, embed_size)
-        _, self.num_sentences, self.max_length, self.embed_size = data_shape
-        print('Batch Default Shape:', data_shape)
-        self.hyper_params = hyper_parameters
-        self.hyper_params.embed_size = self.embed_size
-
-        self.encoder_flattened_size = self.num_sentences * max_seq_len * self.embed_size
-
-        # Model structure
-        self.encoder = EntailmentEncoder(self.num_sentences, max_seq_len,
-                                         embed_size=self.embed_size, hyper_parameters=self.hyper_params)
-        self.fc1 = nn.Linear(self.encoder_flattened_size, max_seq_len, bias=True)
-        self.fc2 = nn.Linear(max_seq_len, 75, bias=True)
-        self.fc_out = nn.Linear(75, number_of_output_classes, bias=False)
-        self.relu = nn.ReLU()
-
-    def forward(self, x, mask):
-        # Input shape: (batch_size, num_sentences, embed_size, max_length)
-        batch_size = x.shape[0]
-        x = self.encoder(x, mask)
-        x = x.masked_fill(mask == 0, 1e-20)
-        x = x.reshape(batch_size, self.encoder_flattened_size)
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.fc_out(x)
-        return x
-
-
-class NeuralNetwork(nn.Module):
-    def __init__(self, data_shape, max_seq_len: int, number_of_output_classes=3,
-                 hyper_parameters: HyperParams = HyperParams()):
-        super(NeuralNetwork, self).__init__()
-        self.hyper_parameters = hyper_parameters
-
-        # Input shape: n, num_sentences, max_seq_len, embed_size
-        _, self.num_sentences, self.max_length, self.embed_size = data_shape
-        self.encoder_flattened_size = self.num_sentences * max_seq_len * self.embed_size
-
-        self.fc1 = nn.Linear(self.encoder_flattened_size, 1000, bias=True)
-        self.fc2 = nn.Linear(1000, 75, bias=True)
-        self.fc_out = nn.Linear(75, number_of_output_classes, bias=False)
-        self.relu = nn.ReLU()
-
-    def forward(self, x, mask):
-        # Input shape: (batch_size, num_sentences, embed_size, max_length)
-        batch_size = x.shape[0]
-        x = x.masked_fill(mask == 0, 1e-20)
-        x = x.reshape(batch_size, self.encoder_flattened_size)
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.fc_out(x)
-        return x
-
-
-class EntailmentNet:
-    def __init__(self, word_vectors, data_loader: SNLI_data_handling.SNLI_DataLoader, path: str,
-                 hyper_parameters: HyperParams = HyperParams(), classifier_model=EntailmentTransformer):
+        # Essential objects
         self.data_loader = data_loader
-        self.word_vectors = word_vectors
         self.hyper_parameters = hyper_parameters
-        assert file_path_is_of_extension(path, '.pth'), FileNotFoundError
-        self.file_path = path
-        self.history_file_path = self.__history_save_path()
 
-        self.history = History(self.history_file_path)
+        # File I/O
+        assert file_path_is_of_extension(file_path, '.pth'), FileNotFoundError
+        self.file_path = file_path
+        self.history_file_path = self._default_file_path_name + '_history.csv'
+        self.history = History(self.history_file_path)  # For recording information
 
-        self.device = hyper_parameters.device
+        self.info_file_path = self._default_file_path_name + '_info.json'
+        self.info = AdditionalInformation(self.info_file_path)
 
-        self.batch_size = hyper_parameters.batch_size
-        self.embed_size = word_vectors.d_emb
-        self.num_sentences = data_loader.num_sentences
-        self.input_shape = (self.batch_size, self.num_sentences,
-                            data_loader.max_words_in_sentence_length, self.embed_size)
+        # Model shape // Input shape
+        self.embed_size = embed_size
+        self.input_shape = input_shape
 
         # Model structure
         self.num_classes = 3  # Definition of problem means this is always 3 (4 if you want a 'not sure')
+        self.optimizer = hyper_parameters.optimizer
 
         if self.is_file:
-            self.load_model()
+            self.load()
         else:
             self.model = classifier_model(self.input_shape,
-                                                max_seq_len=data_loader.max_words_in_sentence_length,
-                                                hyper_parameters=hyper_parameters,
-                                                number_of_output_classes=self.num_classes).to(self.device)
-            self.optimizer = optim.Adadelta(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
+                                          max_seq_len=data_loader.max_words_in_sentence_length,
+                                          hyper_parameters=hyper_parameters,
+                                          number_of_output_classes=self.num_classes).to(hyper_parameters.device)
+            self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
 
+    @abstractmethod
     def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
-        if self.is_file:
-            raise ModelAlreadyTrainedError(self.file_path)
+        raise NotImplementedError
 
-        number_of_iterations_per_epoch = len(self.data_loader) // self.batch_size
-        if self.batch_size > len(self.data_loader):
-            number_of_iterations_per_epoch = 1
-            self.batch_size = len(self.data_loader)
-            self.hyper_parameters.batch_size = self.batch_size
-        total_steps = epochs * number_of_iterations_per_epoch
-        for epoch in range(epochs):
-            running_loss = 0.0
-            running_accuracy = 0.0
-            for i in range(number_of_iterations_per_epoch):
-                percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i))/total_steps, 2)
-                should_print = i % print_every == print_every - 1
-                if should_print:
-                    print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
-                loss, accuracy = self.__train_batch(criterion)
-
-                # print statistics
-                running_loss += loss.item()
-                running_accuracy += accuracy
-                if should_print:
-                    print('[%d, %5d] loss: %.4f \t accuracy: %.2f' %
-                          (epoch + 1, i + 1, float(loss), 100 * accuracy))
-                    print('-' * 20)
-            running_accuracy = running_accuracy / number_of_iterations_per_epoch
-            running_loss = running_loss / number_of_iterations_per_epoch
-            self.history.step(float(running_loss), running_accuracy)
-
-        print('Finished Training.')
-
-        self.save_model()
-        self.history.save()
-        return None
-
-    def __train_batch(self, criterion=nn.CrossEntropyLoss()) -> Any:
-        batch = self.data_loader.load_clean_batch_random(self.batch_size)
-
-        inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20)
-
-        labels = batch.labels_encoding
-        del batch
-
-        # Put all on GPU
-        inputs = inputs.to(self.device)
-        masks = masks.to(self.device)
-        labels = labels.to(self.device)
-
-        # Zero the parameter gradients.
-        self.optimizer.zero_grad()
-
-        # Forward -> backward -> optimizer
-        outputs = self.model(inputs, masks)
-        predictions = self.__minibatch_predictions(outputs)
-
-        loss = criterion(outputs, labels)
-        loss.backward()
-        self.optimizer.step()
-        accuracy = self.accuracy(predictions, labels)
-        return loss, accuracy
-
+    @abstractmethod
     def predict(self, batch: torch.Tensor, batch_mask: torch.Tensor = None) -> torch.Tensor:
-        # Switch to eval mode, then switch back at the end.
-        self.model.eval()
-        self.hyper_parameters.dropout = 0
+        raise NotImplementedError
 
-        if batch_mask is None:
-            prediction = self.model(batch)
-        else:
-            prediction = self.model(batch, batch_mask)
-
-        prediction = torch.argmax(prediction, dim=1)
-        self.model.train()
-        return prediction
-
-    def test(self, test_data_loader: SNLI_data_handling.SNLI_DataLoader, test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
-        if not self.is_file:
-            self.__warn_not_trained()
-
-        self.model.eval()
-        max_batch_size = min(len(test_data_loader), test_batch_size)
-
-        number_of_test_iterations = len(test_data_loader) // max_batch_size
-
-        number_guessed_correctly = 0
-        loss = 0
-        for i in range(number_of_test_iterations):
-            test_data = test_data_loader.load_clean_batch_sequential(batch_size=max_batch_size)
-            lines, masks = test_data.to_tensors(self.word_vectors, pad_value=1e-20)
-            labels = test_data.labels_encoding
-            outputs = self.model(lines, masks)
-
-            for label, prediction in zip(labels, torch.argmax(outputs, dim=1)):
-                number_guessed_correctly += int(label == prediction)
-                loss += criterion(outputs, labels)
-
-        accuracy = number_guessed_correctly / (number_of_test_iterations * max_batch_size)
-        print(f'Total loss: {round(float(loss), 4)}. Total accuracy: {round(accuracy * 100, 2)}%')
-        self.model.train()
-        return loss, accuracy
+    @abstractmethod
+    def test(self, test_data_loader,
+             test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
+        raise NotImplementedError
 
     def count_parameters(self):
         table = PrettyTable(["Modules", "Parameters"])
@@ -469,11 +343,7 @@ class EntailmentNet:
         print(f"Total Trainable Params: {total_params}")
         return total_params
 
-    @property
-    def is_file(self) -> bool:
-        return os.path.isfile(self.file_path)
-
-    def load_model(self) -> None:
+    def load(self) -> None:
         print('-'*20)
         print('Loading model...')
         if not self.is_file:
@@ -483,28 +353,12 @@ class EntailmentNet:
         print('-' * 20)
         return None
 
-    def save_model(self) -> None:
+    def save(self) -> None:
         print('Saving model...')
         torch.save(self.model, self.file_path)
+        self.history.save()
+        self.info.save()
         return None
-
-    def __history_save_path(self):
-        return file_path_without_extension(self.file_path) + '_history.csv'
-
-    @staticmethod
-    def print_available_devices() -> None:
-        print('-'*30)
-        print(f'{torch.cuda.device_count()} devices available')
-        device_indices = list(range(torch.cuda.device_count()))
-        for device_idx in device_indices:
-            print('Device:', device_idx)
-            print('Device Name:', torch.cuda.get_device_name(device_idx))
-        print('-' * 30)
-        return None
-
-    @staticmethod
-    def __minibatch_predictions(x: torch.Tensor) -> torch.Tensor:
-        return torch.argmax(x, dim=1)
 
     @staticmethod
     def accuracy(x: torch.Tensor, y: torch.Tensor):
@@ -514,14 +368,41 @@ class EntailmentNet:
         accuracy = correct / int(x.shape[0])
         return accuracy
 
+    @property
+    def is_file(self) -> bool:
+        return os.path.isfile(self.file_path)
+
     @staticmethod
-    def __warn_not_trained() -> None:
-        warnings.warn('WARNING: The model is not trained yet!')
+    def print_available_devices() -> None:
+        print('-' * 30)
+        print(f'{torch.cuda.device_count()} devices available')
+        device_indices = list(range(torch.cuda.device_count()))
+        for device_idx in device_indices:
+            print('Device:', device_idx)
+            print('Device Name:', torch.cuda.get_device_name(device_idx))
+        print('-' * 30)
         return None
+
+    @property
+    def _default_file_path_name(self):
+        return file_path_without_extension(self.file_path)
+
+    @property
+    def _number_of_iterations_per_epoch(self) -> int:
+        num_iters = len(self.data_loader) // self.hyper_parameters.batch_size
+        if self.hyper_parameters.batch_size > len(self.data_loader):
+            num_iters = 1
+            self.hyper_parameters.batch_size = len(self.data_loader)
+        return num_iters
+
+    @staticmethod
+    def _minibatch_predictions(x: torch.Tensor) -> torch.Tensor:
+        return torch.argmax(x, dim=1)
 
 
 def main():
     pass
+
 
 if __name__ == "__main__":
     main()

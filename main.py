@@ -4,10 +4,9 @@ from dotenv import load_dotenv
 
 from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
 
-from NLI_hyponomy_analysis.transformer_library2 import EntailmentNet, HyperParams, NeuralNetwork
+from model_library import HyperParams
+from models import NeuralNetwork, EntailmentNet
 
-import cProfile
-import re
 
 def main():
     load_dotenv()
@@ -18,7 +17,7 @@ def main():
 
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
 
-    train_loader = SNLI_DataLoader(train_path)
+    train_loader = SNLI_DataLoader(train_small_path)
     # test_loader = SNLI_DataLoader(test_path)
 
     # Here is a table of different lookup methods I have tested
@@ -30,17 +29,17 @@ def main():
     word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors.load_memory()
 
-    params = HyperParams(heads=5, batch_size=64, learning_rate=1, dropout=0.3)
+    params = HyperParams(heads=5, batch_size=128, learning_rate=1, dropout=0.3)
 
-    mike_net = EntailmentNet(word_vectors, train_loader, path='data/models/nn/test_model_gpu.pth',
+    mike_net = EntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_small_model2.pth',
                              hyper_parameters=params, classifier_model=NeuralNetwork)
     mike_net.count_parameters()
-    mike_net.train(epochs=1, print_every=1)
+    # mike_net.train(epochs=10, print_every=1)
 
-    # mike_net.history.plot_accuracy()
-    # mike_net.history.plot_loss()
+    mike_net.history.plot_accuracy()
+    mike_net.history.plot_loss()
     # mike_net.test(test_loader)
 
 
 if __name__ == '__main__':
-    cProfile.run('main()')
+    main()

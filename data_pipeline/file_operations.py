@@ -1,3 +1,4 @@
+import json
 import os
 
 
@@ -46,3 +47,30 @@ def file_path_without_extension(file_path: str) -> str:
             break
 
     return file_path[:-stop_index]
+
+
+class JSON_writer:
+    def __init__(self, file_path: str):
+        assert file_path_is_of_extension(file_path, '.json')
+        self.file_path = file_path
+        self.data = {}
+
+        if self.file_exists:
+            self.load()
+
+    @property
+    def file_exists(self):
+        return is_file(self.file_path, '.json')
+
+    def load(self) -> None:
+        assert self.file_exists, FileNotFoundError
+        with open(self.file_path, 'r') as json_file:
+            self.data = json.load(json_file)
+        return None
+
+    def save(self) -> None:
+        with open(self.file_path, 'w') as json_file:
+            json.dump(self.data, json_file)
+        return None
+
+
