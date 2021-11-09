@@ -3,6 +3,11 @@ class ModelAlreadyTrainedError(Exception):
         super().__init__(f'Model cannot train, since it already has been trained and saved to: {file_path}')
 
 
+class ModelIsNotValidatingError(Exception):
+    def __init__(self):
+        super().__init__('Model is not validating.')
+
+
 class ModelNotTrainedWarning(Warning):
     def __init__(self):
         self.message = 'WARNING: The model is not trained yet!'

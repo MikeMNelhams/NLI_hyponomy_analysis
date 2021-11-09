@@ -134,7 +134,7 @@ class EntailmentModelBatch:
         padded_list = list_to_pad + [pad_value for _ in range(max_length - len(list_to_pad))]
         return padded_list
 
-    def to_tensors(self, word_vectors: GloveEmbedding, pad_value=0):
+    def to_tensors(self, word_vectors: GloveEmbedding, pad_value=0, max_length=None):
         # Make empty lists
         sentences = [None for _ in range(self.data.shape[1] - 1)]
         masks = sentences.copy()
@@ -145,12 +145,7 @@ class EntailmentModelBatch:
                                                                 pad_value=pad_value)
 
         sentences, masks = self.__sentence_tensor_stack(sentences, masks, pad_value=pad_value)
-        sentences, masks = self.__permute_tensor(sentences), self.__permute_tensor(masks)
         return sentences, masks
-
-    @staticmethod
-    def __permute_tensor(tensor: torch.Tensor):
-        return tensor.permute(0, 3, 1, 2)
 
     def __sentence_to_tensors(self, sentence_num: int,
                               word_vectors: GloveEmbedding, pad_value=0) -> (torch.Tensor, torch.Tensor):
@@ -166,13 +161,17 @@ class EntailmentModelBatch:
 
         padding_list = [pad_value for _ in range(embed_vector_length)]
 
+        unknown_word_vector = word_vectors.lookup('<unk>')
+        if unknown_word_vector is None:
+            unknown_word_vector = padding_list
+
         def get_vector(word: Any) -> list:
             if word == 0:
                 return padding_list
             word_vector = word_vectors.lookup(word)
-            # Lookup returns None if word is OOV
+            # Lookup returns UNK/PAD if word is OOV
             if word_vector is None:
-                return padding_list
+                return unknown_word_vector
             return word_vector
 
         def pad_row(row: str, __pad_value=pad_value) -> List:
@@ -192,30 +191,27 @@ class EntailmentModelBatch:
 
         return padded_tensor, padding_mask_tensor
 
-    def __sentence_tensor_stack(self,
-                                sentences,
-                                masks,
-                                pad_value=0) -> (torch.tensor, torch.tensor):
+    def __sentence_tensor_stack(self, sentences, masks, pad_value=0) -> (torch.tensor, torch.tensor):
         # Sentences/Masks INPUT will be shapes:
         # 1. (256, Mp1, 300)
         # 2. (256, Mp2, 300), ...
-
+        # We output shape (256, Mp_{max}, 300)
         paddings = tuple([sentence.shape[1] for sentence in sentences])
-        biggest_sentence = int(np.argmax(paddings))
-        max_pad = paddings[biggest_sentence]
+        longest_sentence_index = int(np.argmax(paddings))
+        max_pad = paddings[longest_sentence_index]
 
         for sentence_idx in range(len(sentences)):
-            if sentence_idx != biggest_sentence:
+            if sentence_idx != longest_sentence_index:
                 sentences[sentence_idx] = self.__pad_tensor(sentences[sentence_idx],
                                                             max_pad=max_pad, pad_value=pad_value)
 
         for mask_idx in range(len(masks)):
-            if mask_idx != biggest_sentence:
+            if mask_idx != longest_sentence_index:
                 masks[mask_idx] = self.__pad_tensor(masks[mask_idx], max_pad=max_pad, pad_value=0)
 
         # Sentences/Masks now all shape (256, Mp_{max}, 300)
-        # We want to stack along new dim. Output shape -> (256, Mp_{max}, 300, number_of_sentences=2)
-        return torch.stack(tuple(sentences), dim=-1), torch.stack(tuple(masks), dim=-1)
+        # We want to stack along new dim. Output shape -> (256, number_of_sentences=2, Mp_{max}, 300)
+        return torch.stack(tuple(sentences), dim=1), torch.stack(tuple(masks), dim=1)
 
     def __pad_tensor(self, tensor_input, max_pad: int, pad_value: float = 0):
         # Input shape (b, Mp1, e)

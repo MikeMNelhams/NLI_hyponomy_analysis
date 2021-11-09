@@ -285,10 +285,11 @@ class EntailmentEncoder(nn.Module):
 
 
 class AbstractClassifierModel(ABC):
-    def __init__(self, data_loader, file_path: str, classifier_model, embed_size: int, input_shape,
-                 hyper_parameters: HyperParams = HyperParams()):
+    """ Handles Model construction, loading, saving internally. You define train, test, validation, predict."""
+    def __init__(self, train_data_loader, file_path: str, classifier_model, embed_size: int, input_shape,
+                 num_classes: int, hyper_parameters: HyperParams = HyperParams()):
         # Essential objects
-        self.data_loader = data_loader
+        self.data_loader = train_data_loader
         self.hyper_parameters = hyper_parameters
 
         # File I/O
@@ -305,14 +306,14 @@ class AbstractClassifierModel(ABC):
         self.input_shape = input_shape
 
         # Model structure
-        self.num_classes = 3  # Definition of problem means this is always 3 (4 if you want a 'not sure')
+        self.num_classes = num_classes
         self.optimizer = hyper_parameters.optimizer
 
         if self.is_file:
             self.load()
         else:
             self.model = classifier_model(self.input_shape,
-                                          max_seq_len=data_loader.max_words_in_sentence_length,
+                                          max_seq_len=train_data_loader.max_words_in_sentence_length,
                                           hyper_parameters=hyper_parameters,
                                           number_of_output_classes=self.num_classes).to(hyper_parameters.device)
             self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
