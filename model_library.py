@@ -308,12 +308,13 @@ class AbstractClassifierModel(ABC):
         # Model structure
         self.num_classes = num_classes
         self.optimizer = hyper_parameters.optimizer
+        self.max_length = input_shape[2]
 
         if self.is_file:
             self.load()
         else:
             self.model = classifier_model(self.input_shape,
-                                          max_seq_len=train_data_loader.max_words_in_sentence_length,
+                                          max_seq_len=self.max_length,
                                           hyper_parameters=hyper_parameters,
                                           number_of_output_classes=self.num_classes).to(hyper_parameters.device)
             self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
@@ -345,13 +346,13 @@ class AbstractClassifierModel(ABC):
         return total_params
 
     def load(self) -> None:
-        print('-'*20)
+        print('-'*50)
         print('Loading model...')
         if not self.is_file:
             raise FileNotFoundError
         self.model = torch.load(self.file_path)
         print('Model loaded!')
-        print('-' * 20)
+        print('-' * 50)
         return None
 
     def save(self) -> None:
@@ -375,13 +376,13 @@ class AbstractClassifierModel(ABC):
 
     @staticmethod
     def print_available_devices() -> None:
-        print('-' * 30)
+        print('-' * 50)
         print(f'{torch.cuda.device_count()} devices available')
         device_indices = list(range(torch.cuda.device_count()))
         for device_idx in device_indices:
             print('Device:', device_idx)
             print('Device Name:', torch.cuda.get_device_name(device_idx))
-        print('-' * 30)
+        print('-' * 50)
         return None
 
     @property

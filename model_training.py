@@ -17,7 +17,7 @@ def main():
 
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
 
-    train_loader = SNLI_DataLoader(train_path)
+    train_loader = SNLI_DataLoader(train_small_path)
     validation_loader = SNLI_DataLoader(validation_path)
     # test_loader = SNLI_DataLoader(test_path)
 
@@ -32,10 +32,14 @@ def main():
 
     params = HyperParams(heads=5, batch_size=128, learning_rate=1, dropout=0.3)
 
-    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_validation.pth',
-                                   hyper_parameters=params, classifier_model=NeuralNetwork,
-                                   validation_data_loader=validation_loader)
-    mike_net.count_parameters()
+    # Validation Model
+    # mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_small_validation0.pth',
+    #                                hyper_parameters=params, classifier_model=NeuralNetwork,
+    #                                validation_data_loader=validation_loader)
+
+    # No validation model
+    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_small_validation0.pth',
+                                   hyper_parameters=params, classifier_model=NeuralNetwork)
     mike_net.train(epochs=100, print_every=1)
 
     # mike_net.history.plot_accuracy()

@@ -144,11 +144,11 @@ class EntailmentModelBatch:
             sentences[i], masks[i] = self.__sentence_to_tensors(sentence_num=i + 1, word_vectors=word_vectors,
                                                                 pad_value=pad_value)
 
-        sentences, masks = self.__sentence_tensor_stack(sentences, masks, pad_value=pad_value)
+        sentences, masks = self.__sentence_tensor_stack(sentences, masks, pad_value=pad_value, max_length=max_length)
         return sentences, masks
 
-    def __sentence_to_tensors(self, sentence_num: int,
-                              word_vectors: GloveEmbedding, pad_value=0) -> (torch.Tensor, torch.Tensor):
+    def __sentence_to_tensors(self, sentence_num: int, word_vectors: GloveEmbedding,
+                              pad_value=0) -> (torch.Tensor, torch.Tensor):
         """ word_vectors must be same length for all words.
             sentence_num begins 1, 2, 3..."""
         assert 0 < sentence_num < self.data.shape[1], "Sentence number must be less than self.data.shape[1]"
@@ -191,23 +191,34 @@ class EntailmentModelBatch:
 
         return padded_tensor, padding_mask_tensor
 
-    def __sentence_tensor_stack(self, sentences, masks, pad_value=0) -> (torch.tensor, torch.tensor):
+    def __sentence_tensor_stack(self, sentences, masks, pad_value=0, max_length=None) -> (torch.tensor, torch.tensor):
         # Sentences/Masks INPUT will be shapes:
         # 1. (256, Mp1, 300)
         # 2. (256, Mp2, 300), ...
         # We output shape (256, Mp_{max}, 300)
-        paddings = tuple([sentence.shape[1] for sentence in sentences])
-        longest_sentence_index = int(np.argmax(paddings))
-        max_pad = paddings[longest_sentence_index]
+        if max_length is not None:
+            max_pad = max_length
 
-        for sentence_idx in range(len(sentences)):
-            if sentence_idx != longest_sentence_index:
+            for sentence_idx in range(len(sentences)):
                 sentences[sentence_idx] = self.__pad_tensor(sentences[sentence_idx],
                                                             max_pad=max_pad, pad_value=pad_value)
 
-        for mask_idx in range(len(masks)):
-            if mask_idx != longest_sentence_index:
+            for mask_idx in range(len(masks)):
                 masks[mask_idx] = self.__pad_tensor(masks[mask_idx], max_pad=max_pad, pad_value=0)
+
+        else:
+            paddings = tuple([sentence.shape[1] for sentence in sentences])
+            longest_sentence_index = int(np.argmax(paddings))
+            max_pad = paddings[longest_sentence_index]
+
+            for sentence_idx in range(len(sentences)):
+                if sentence_idx != longest_sentence_index:
+                    sentences[sentence_idx] = self.__pad_tensor(sentences[sentence_idx],
+                                                                max_pad=max_pad, pad_value=pad_value)
+
+            for mask_idx in range(len(masks)):
+                if mask_idx != longest_sentence_index:
+                    masks[mask_idx] = self.__pad_tensor(masks[mask_idx], max_pad=max_pad, pad_value=0)
 
         # Sentences/Masks now all shape (256, Mp_{max}, 300)
         # We want to stack along new dim. Output shape -> (256, number_of_sentences=2, Mp_{max}, 300)

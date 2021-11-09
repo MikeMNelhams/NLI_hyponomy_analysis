@@ -1,8 +1,6 @@
 import time
-import warnings
-
 from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History
-from model_errors import ModelAlreadyTrainedError, ModelNotTrainedWarning, ModelIsNotValidatingError
+from model_errors import ModelAlreadyTrainedError, ModelIsNotValidatingError
 
 import torch
 from torch import nn
@@ -72,11 +70,17 @@ class StaticEntailmentNet(AbstractClassifierModel):
                  hyper_parameters: HyperParams = HyperParams(), classifier_model=EntailmentTransformer,
                  validation_data_loader=None):
 
+        model_is_validating = validation_data_loader is not None
+        max_length = train_data_loader.max_words_in_sentence_length
+
+        if model_is_validating:
+            max_length = max(max_length, validation_data_loader.max_words_in_sentence_length)
+
         embed_size = word_vectors.d_emb
         num_classes = 3  # Definition of problem means this is always 3 (4 if you want a 'not sure')
 
         input_shape = (hyper_parameters.batch_size, train_data_loader.num_sentences,
-                       train_data_loader.max_words_in_sentence_length, embed_size)
+                       max_length, embed_size)
 
         super(StaticEntailmentNet, self).__init__(train_data_loader=train_data_loader, file_path=file_path,
                                                   classifier_model=classifier_model, hyper_parameters=hyper_parameters,
@@ -88,8 +92,9 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
         # Model structure
         self.num_sentences = train_data_loader.num_sentences
+        self.max_length = max_length
 
-        self.model_is_validating = validation_data_loader is not None
+        self.model_is_validating = model_is_validating
         if self.model_is_validating:
             self.__validation_data_loader = validation_data_loader
             self.__validation_save_path = self._default_file_path_name + '_validation_history.csv'
@@ -108,10 +113,10 @@ class StaticEntailmentNet(AbstractClassifierModel):
             running_loss = 0.0
             running_accuracy = 0.0
             for i in range(number_of_iterations_per_epoch):
-                percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i))/total_steps, 2)
+                percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i)) / total_steps, 2)
                 should_print = i % print_every == print_every - 1
                 if should_print:
-                    print(f'Training batch {i} of {number_of_iterations_per_epoch}. {percentage_complete}% done')
+                    print(f'Training batch: {i} of {number_of_iterations_per_epoch}.\t{percentage_complete}% done')
                 loss, accuracy = self.__train_batch(criterion)
 
                 # print statistics
@@ -120,7 +125,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 running_accuracy += accuracy
                 if should_print:
                     self.__print_step(epoch=epoch, batch_step=i, loss=batch_loss, accuracy=accuracy)
-                    print('-' * 20)
+                    print('-' * 50)
 
             if self.model_is_validating:
                 self.__validate()
@@ -140,8 +145,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
     def __train_batch(self, criterion=nn.CrossEntropyLoss()) -> (float, float):
         batch = self.data_loader.load_clean_batch_random(self.hyper_parameters.batch_size)
 
-        inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20)
-
+        inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20, max_length=self.max_length)
         labels = batch.labels_encoding
         del batch
 
@@ -169,8 +173,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
         validation_loss, validation_accuracy = self.test(self.__validation_data_loader,
                                                          self.hyper_parameters.batch_size,
-                                                         criterion=criterion)
-        print(f'Validation Loss {round(validation_loss, 4)}. Validation Accuracy: {round(validation_accuracy, 2)}%')
+                                                         criterion=criterion, print_test_type='validation')
         self.validation_history.step(validation_loss, validation_accuracy)
         return None
 
@@ -189,9 +192,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         return prediction
 
     def test(self, test_data_loader,
-             test_batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> (float, float):
-        if not self.is_file:
-            warnings.warn('', category=ModelNotTrainedWarning)
+             test_batch_size: int = 256, criterion=nn.CrossEntropyLoss(), print_test_type: str='test') -> (float, float):
 
         self.model.eval()
         max_batch_size = min(len(test_data_loader), test_batch_size)
@@ -202,16 +203,26 @@ class StaticEntailmentNet(AbstractClassifierModel):
         loss = 0
         for i in range(number_of_test_iterations):
             test_data = test_data_loader.load_clean_batch_sequential(batch_size=max_batch_size)
-            lines, masks = test_data.to_tensors(self.word_vectors, pad_value=1e-20)
+            lines, masks = test_data.to_tensors(self.word_vectors, pad_value=1e-20, max_length=self.max_length)
             labels = test_data.labels_encoding
+
+            # To device (GPU)
+            lines = lines.to(self.hyper_parameters.device)
+            masks = masks.to(self.hyper_parameters.device)
+            labels = labels.to(self.hyper_parameters.device)
+
             outputs = self.model(lines, masks)
 
             for label, prediction in zip(labels, torch.argmax(outputs, dim=1)):
                 number_guessed_correctly += int(label == prediction)
                 loss += criterion(outputs, labels)
 
+        loss = float(loss)
+
         accuracy = number_guessed_correctly / (number_of_test_iterations * max_batch_size)
-        print(f'Total loss: {round(float(loss), 4)}. Total accuracy: {round(accuracy * 100, 2)}%')
+        print(f'Total {print_test_type} loss: {round(loss, 4)}. '
+              f'Total {print_test_type} accuracy: {round(accuracy * 100, 2)}%')
+        print('='*50)
         self.model.train()
         return loss, accuracy
 
