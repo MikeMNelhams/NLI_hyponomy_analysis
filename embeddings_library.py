@@ -1,10 +1,9 @@
-from gensim.scripts.glove2word2vec import glove2word2vec
-from gensim.models.keyedvectors import KeyedVectors
+import os
 
 # noinspection PyUnresolvedReferences
 from embeddings import GloveEmbedding
-
-import os
+from gensim.models.keyedvectors import KeyedVectors
+from gensim.scripts.glove2word2vec import glove2word2vec
 
 
 def glove_matrix(input_file_path: str, output_file_path: str):

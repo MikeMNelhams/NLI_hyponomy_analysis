@@ -1,13 +1,13 @@
 import json
-import pickle
 import os
-from NLI_hyponomy_analysis.data_pipeline import file_operations
+import pickle
+import random
 from warnings import warn
 
-import random
 import numpy as np
-
 from nltk.corpus import wordnet as wn
+
+from NLI_hyponomy_analysis.data_pipeline import file_operations
 
 
 class KS:

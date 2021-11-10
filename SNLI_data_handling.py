@@ -1,23 +1,20 @@
+import json
 import os.path
-from typing import List
-from typing import Iterable
-from typing import Any
-
-from itertools import chain
+import random
 from collections import Counter
 from collections import OrderedDict
+from itertools import chain
+from typing import Any
+from typing import Iterable
+from typing import List
 
-import random
 import numpy as np
-
-import json
-
-from ..word_operations import WordParser, count_max_sequence_length
-from ..data_pipeline.file_operations import file_path_without_extension
-from nltk.tokenize import word_tokenize
-from embeddings import GloveEmbedding
-
 import torch
+from embeddings import GloveEmbedding
+from nltk.tokenize import word_tokenize
+
+from data_pipeline.file_operations import file_path_without_extension
+from word_operations import WordParser, count_max_sequence_length
 
 
 class BatchSizeTooLargeError(Exception):
@@ -89,9 +86,9 @@ class EntailmentModelBatch:
     """ Entailment is either 'contradiction': -1, 'neutral': 0, 'entailment': 1"""
 
     class_label_encoding = {'entailment': 0,
-                      'neutral': 1,
-                      'contradiction': 2,
-                      '-': 1}
+                            'neutral': 1,
+                            'contradiction': 2,
+                            '-': 1}
 
     def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable,
                  max_sequence_len: int,
@@ -252,6 +249,9 @@ class DictBatch(Batch):
         self.data = list_of_dicts
         self.headers = self.data[0].keys()
         self.max_sequence_len = max_sequence_len
+
+    def __len__(self):
+        return len(self.data)
 
     def to_sentence_batch(self, field_name: str) -> SentenceBatch:
         if field_name not in self.sentence_fields:

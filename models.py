@@ -1,9 +1,10 @@
 import time
-from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History
-from model_errors import ModelAlreadyTrainedError, ModelIsNotValidatingError
 
 import torch
 from torch import nn
+
+from model_errors import ModelAlreadyTrainedError, ModelIsNotValidatingError
+from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History
 
 
 class NeuralNetwork(nn.Module):
@@ -116,7 +117,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i)) / total_steps, 2)
                 should_print = i % print_every == print_every - 1
                 if should_print:
-                    print(f'Training batch: {i} of {number_of_iterations_per_epoch}.\t{percentage_complete}% done')
+                    print(f'Training batch: {i} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
                 loss, accuracy = self.__train_batch(criterion)
 
                 # print statistics
@@ -191,8 +192,8 @@ class StaticEntailmentNet(AbstractClassifierModel):
         self.model.train()
         return prediction
 
-    def test(self, test_data_loader,
-             test_batch_size: int = 256, criterion=nn.CrossEntropyLoss(), print_test_type: str='test') -> (float, float):
+    def test(self, test_data_loader, test_batch_size: int = 256,
+             criterion=nn.CrossEntropyLoss(), print_test_type: str='test') -> (float, float):
 
         self.model.eval()
         max_batch_size = min(len(test_data_loader), test_batch_size)
@@ -220,8 +221,9 @@ class StaticEntailmentNet(AbstractClassifierModel):
         loss = float(loss)
 
         accuracy = number_guessed_correctly / (number_of_test_iterations * max_batch_size)
-        print(f'Total {print_test_type} loss: {round(loss, 4)}. '
-              f'Total {print_test_type} accuracy: {round(accuracy * 100, 2)}%')
+        loss = loss / (number_of_test_iterations * max_batch_size)
+        print(f'Mean {print_test_type} loss: {round(loss, 4)}. '
+              f'Mean {print_test_type} accuracy: {round(accuracy * 100, 2)}%')
         print('='*50)
         self.model.train()
         return loss, accuracy

@@ -1,20 +1,16 @@
+import os.path
 from abc import ABC, abstractmethod
 
-import os.path
-
-from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension
-from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, JSON_writer
-
-import pandas as pd
-
-from prettytable import PrettyTable
-
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from prettytable import PrettyTable
 
-import matplotlib.pyplot as plt
+from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, JSON_writer
+from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension
 
 
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
@@ -140,6 +136,10 @@ class AdditionalInformation(JSON_writer):
 
     def reset_runtime(self):
         self.data['total_runtime'] = 0
+
+    @property
+    def runtime(self):
+        return self.data['total_runtime']
 
 
 class EntailmentSelfAttention(nn.Module):
@@ -271,7 +271,7 @@ class EntailmentEncoder(nn.Module):
         assert num_sentences == self.num_sentences
 
         # Positional encoding
-        positions = torch.arange(0, sequence_length).expand(batch_size, sequence_length)
+        positions = torch.arange(0, sequence_length).expand(batch_size, sequence_length).to(self.hyper_params.device)
         positions_out = self.position_embedding(positions)
         positions_out = positions_out.unsqueeze(-1).expand(-1, -1, -1, num_sentences)  # Duplicate across num sentences
         positions_out = positions_out.permute(0, 3, 1, 2)
