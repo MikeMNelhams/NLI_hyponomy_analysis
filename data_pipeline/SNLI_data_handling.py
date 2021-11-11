@@ -13,8 +13,8 @@ import torch
 from embeddings import GloveEmbedding
 from nltk.tokenize import word_tokenize
 
-from file_operations import file_path_without_extension
-from word_operations import WordParser, count_max_sequence_length
+from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_without_extension
+from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser, count_max_sequence_length
 
 
 class BatchSizeTooLargeError(Exception):
@@ -118,7 +118,8 @@ class EntailmentModelBatch:
 
     def clean_data(self, clean_actions: WordParser = None) -> None:
         # Ternary operator for SPEED and lack of intelliJ errors
-        clean = np.vectorize(clean_actions) if clean_actions is not None else np.vectorize(WordParser.default_clean())
+        clean = np.vectorize(clean_actions) if clean_actions is not None \
+            else np.vectorize(WordParser.default_clean())
 
         for col_index in range(self.data.shape[1]):
             self.data[:, col_index] = clean(self.data[:, col_index])

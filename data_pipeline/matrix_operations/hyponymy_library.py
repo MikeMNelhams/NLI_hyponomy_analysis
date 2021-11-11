@@ -4,7 +4,7 @@ import random
 import numpy as np
 import sklearn.metrics as metrics
 
-import matrix_library as matrix
+from NLI_hyponomy_analysis.data_pipeline.matrix_operations.matrix_library import matrix_library as matrix
 
 
 class InvalidPhraseType(Exception):

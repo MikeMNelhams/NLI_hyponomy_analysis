@@ -2,7 +2,7 @@ import torch.optim as optim
 from dotenv import load_dotenv
 
 import embeddings_library as embed
-from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
+from data_pipeline.SNLI_data_handling import SNLI_DataLoader
 from model_library import HyperParams
 from models import NeuralNetwork, StaticEntailmentNet
 
@@ -16,7 +16,7 @@ def main():
 
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
 
-    train_loader = SNLI_DataLoader(train_small_path)
+    train_loader = SNLI_DataLoader(train_path)
     validation_loader = SNLI_DataLoader(validation_path)
     # test_loader = SNLI_DataLoader(test_path)
 
@@ -37,9 +37,9 @@ def main():
     #                                validation_data_loader=validation_loader)
 
     # No validation model
-    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_model1',
+    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_model1.pth',
                                    hyper_parameters=params, classifier_model=NeuralNetwork)
-    mike_net.train(epochs=200, print_every=1)
+    mike_net.train(epochs=30, print_every=1)
 
     # mike_net.history.plot_accuracy()
     # mike_net.history.plot_loss()
