@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import embeddings_library as embed
 from NLI_hyponomy_analysis.SNLI_data_handling import SNLI_DataLoader
 from model_library import HyperParams
-from models import NeuralNetwork, StaticEntailmentNet
+from models import NeuralNetwork, StaticEntailmentNet, EntailmentTransformer
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
     word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors.load_memory()
 
-    params = HyperParams(heads=5, batch_size=256, learning_rate=0.1, dropout=0.3, optimizer=optim.Adam)
+    params = HyperParams(heads=5, batch_size=256, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
 
     # Validation Model
     # mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_small_validation0.pth',
@@ -37,9 +37,9 @@ def main():
     #                                validation_data_loader=validation_loader)
 
     # No validation model
-    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_model1.pth',
+    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_model1',
                                    hyper_parameters=params, classifier_model=NeuralNetwork)
-    mike_net.train(epochs=100, print_every=1)
+    mike_net.train(epochs=200, print_every=1)
 
     # mike_net.history.plot_accuracy()
     # mike_net.history.plot_loss()

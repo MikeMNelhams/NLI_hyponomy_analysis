@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from NLI_hyponomy_analysis.SNLI_data_handling import SNLI_DataLoader
 import embeddings_library as embed
 import model_library as ml
-from models import StaticEntailmentNet, NeuralNetwork
+from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer
 import torch.optim as optim
 
 
@@ -56,9 +56,9 @@ class NeuralNet(unittest.TestCase):
                                            hyper_parameters=params, classifier_model=NeuralNetwork)
             mike_net.train(epochs=100, print_every=10)
 
-            assert mike_net.history.accuracy[-1] > 0.3
-            assert mike_net.history.loss[-1] < 3
-            assert mike_net.info.runtime < 10  # Red flag if it takes longer than 10 seconds.
+            self.assertGreater(mike_net.history.accuracy[-1], 0.3)
+            self.assertLess(mike_net.history.loss[-1], 3)
+            self.assertLess(mike_net.info.runtime, 10)  # Red flag if it takes longer than 10 seconds.
 
     def test_loading(self):
         train_load_path = 'data/test_data/test_load'
@@ -66,17 +66,9 @@ class NeuralNet(unittest.TestCase):
         mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_load_path + '.pth',
                                        classifier_model=NeuralNetwork)
 
-        assert mike_net.history.accuracy[-1] > 0.3
-        assert mike_net.history.loss[-1] < 3
-        assert mike_net.info.runtime < 10  # Red flag if it takes longer than 10 seconds.
-
-    def test_train_batch_number_too_high(self):
-        train_save_path = 'data/test_data/test_train1'
-
-        with TestTeardown(train_save_path):
-            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
-                                           classifier_model=NeuralNetwork)
-            mike_net.train(1)
+        self.assertGreater(mike_net.history.accuracy[-1], 0.3)
+        self.assertLess(mike_net.history.loss[-1], 3)
+        self.assertLess(mike_net.info.runtime, 10)  # Red flag if it takes longer than 10 seconds.
 
     def test_testing(self):
         train_load_path = 'data/test_data/test_load'
@@ -86,15 +78,89 @@ class NeuralNet(unittest.TestCase):
 
         loss, acc = mike_net.test(self.train_loader)
         print(f'LOSS: {loss}, ACC: {acc}')
-        assert acc > 0.5
-        assert loss < 1
+        self.assertGreater(mike_net.history.accuracy[-1], 0.5)
+        self.assertLess(mike_net.history.loss[-1], 1)
 
-    def test_train_validation(self):
+    def test_train_batch_number_too_high(self):
         train_save_path = 'data/test_data/test_train1'
 
         with TestTeardown(train_save_path):
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           classifier_model=NeuralNetwork)
+            mike_net.train(1)
+
+    def test_train_validation(self):
+        train_save_path = 'data/test_data/test_train2'
+
+        with TestTeardown(train_save_path):
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            classifier_model=NeuralNetwork, validation_data_loader=self.train_loader)
+            mike_net.train(1)
+
+
+class Transformer(unittest.TestCase):
+    train_small_path = "data/snli_small/snli_small1_train.jsonl"
+    train_loader = SNLI_DataLoader(train_small_path)
+    validation_loader = SNLI_DataLoader(train_small_path)
+
+    load_dotenv()
+
+    word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors.load_memory()
+
+    def test_train(self):
+        train_save_path = 'data/test_data/test_train3'
+
+        with TestTeardown(train_save_path):
+            params = ml.HyperParams(heads=5, batch_size=256, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer)
+            mike_net.train(epochs=100, print_every=10)
+
+            self.assertGreater(mike_net.history.accuracy[-1], 0.3)
+            self.assertLess(mike_net.history.loss[-1], 3)
+            self.assertLess(mike_net.info.runtime, 10)  # Red flag if it takes longer than 10 seconds.
+
+    def test_loading(self):
+        train_load_path = 'data/test_data/test_load_transformer'
+
+        mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_load_path + '.pth',
+                                       classifier_model=EntailmentTransformer)
+
+        self.assertGreater(mike_net.history.accuracy[-1], 0.3)
+        self.assertLess(mike_net.history.loss[-1], 3)
+        self.assertLess(mike_net.info.runtime, 10)  # Red flag if it takes longer than 10 seconds.
+
+    def test_testing(self):
+        train_load_path = 'data/test_data/test_load_transformer'
+
+        mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_load_path + '.pth',
+                                       classifier_model=EntailmentTransformer)
+
+        loss, acc = mike_net.test(self.train_loader)
+        print(f'LOSS: {loss}, ACC: {acc}')
+        self.assertGreater(mike_net.history.accuracy[-1], 0.5)
+        self.assertLess(mike_net.history.loss[-1], 1)
+
+    def test_train_batch_number_too_high(self):
+        train_save_path = 'data/test_data/test_train4'
+
+        with TestTeardown(train_save_path):
+            params = ml.HyperParams(heads=5, batch_size=500, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params,
+                                           classifier_model=EntailmentTransformer)
+            mike_net.train(1)
+
+    def test_train_validation(self):
+        train_save_path = 'data/test_data/test_train5'
+
+        with TestTeardown(train_save_path):
+            params = ml.HyperParams(heads=5, batch_size=256, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params,
+                                           classifier_model=EntailmentTransformer,
+                                           validation_data_loader=self.train_loader)
             mike_net.train(1)
 
 
