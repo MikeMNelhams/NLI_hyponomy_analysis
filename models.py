@@ -13,8 +13,9 @@ class NeuralNetwork(nn.Module):
         super(NeuralNetwork, self).__init__()
         self.hyper_parameters = hyper_parameters
 
-        # Input shape: n, num_sentences, max_seq_len, embed_size
-        _, self.num_sentences, self.max_length, self.embed_size = data_shape
+        # Input shape: batch_size, num_sentences, max_seq_len, embed_size
+        # Data shape: num_sentences, max_seq_len, embed_size
+        self.num_sentences, self.max_length, self.embed_size = data_shape
         self.encoder_flattened_size = self.num_sentences * max_seq_len * self.embed_size
 
         self.fc1 = nn.Linear(self.encoder_flattened_size, 200, bias=True)
@@ -39,7 +40,8 @@ class EntailmentTransformer(nn.Module):
         super(EntailmentTransformer, self).__init__()
 
         # Input shape: (batch_size, num_sentences, max_length, embed_size)
-        _, self.num_sentences, self.max_length, self.embed_size = data_shape
+        # Data shape: num_sentences, max_seq_len, embed_size
+        self.num_sentences, self.max_length, self.embed_size = data_shape
         print('Batch Default Shape:', data_shape)
         self.hyper_params = hyper_parameters
         self.hyper_params.embed_size = self.embed_size
@@ -80,8 +82,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         embed_size = word_vectors.d_emb
         num_classes = 3  # Definition of problem means this is always 3 (4 if you want a 'not sure')
 
-        input_shape = (hyper_parameters.batch_size, train_data_loader.num_sentences,
-                       max_length, embed_size)
+        input_shape = (train_data_loader.num_sentences, max_length, embed_size)
 
         super(StaticEntailmentNet, self).__init__(train_data_loader=train_data_loader, file_path=file_path,
                                                   classifier_model=classifier_model, hyper_parameters=hyper_parameters,
@@ -101,13 +102,13 @@ class StaticEntailmentNet(AbstractClassifierModel):
             self.__validation_save_path = self._default_file_path_name + '_validation_history.csv'
             self.validation_history = History(self.__validation_save_path)
 
-    def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
+    def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
         training_start_time = time.time()
 
         if self.is_file:
             raise ModelAlreadyTrainedError(self.file_path)
 
-        number_of_iterations_per_epoch = self._number_of_iterations_per_epoch
+        number_of_iterations_per_epoch = self._number_of_iterations_per_epoch(batch_size=batch_size)
 
         total_steps = epochs * number_of_iterations_per_epoch
         for epoch in range(epochs):
@@ -118,7 +119,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 should_print = i % print_every == print_every - 1
                 if should_print:
                     print(f'Training batch: {i} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
-                loss, accuracy = self.__train_batch(criterion)
+                loss, accuracy = self.__train_batch(batch_size=batch_size, criterion=criterion)
 
                 # print statistics
                 batch_loss = loss.item()
@@ -143,8 +144,8 @@ class StaticEntailmentNet(AbstractClassifierModel):
         self.save()
         return None
 
-    def __train_batch(self, criterion=nn.CrossEntropyLoss()) -> (float, float):
-        batch = self.data_loader.load_clean_batch_random(self.hyper_parameters.batch_size)
+    def __train_batch(self, batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> (float, float):
+        batch = self.data_loader.load_clean_batch_random(batch_size)
 
         inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20, max_length=self.max_length)
         labels = batch.labels_encoding
@@ -168,12 +169,12 @@ class StaticEntailmentNet(AbstractClassifierModel):
         accuracy = self.accuracy(predictions, labels)
         return loss, accuracy
 
-    def __validate(self, criterion=nn.CrossEntropyLoss()) -> None:
+    def __validate(self, sampling_batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> None:
         if not self.model_is_validating:
             raise ModelIsNotValidatingError
 
         validation_loss, validation_accuracy = self.test(self.__validation_data_loader,
-                                                         self.hyper_parameters.batch_size,
+                                                         test_batch_size=sampling_batch_size,
                                                          criterion=criterion, print_test_type='validation')
         self.validation_history.step(validation_loss, validation_accuracy)
         return None

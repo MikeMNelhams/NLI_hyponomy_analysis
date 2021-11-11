@@ -19,11 +19,10 @@ from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_pa
 
 class HyperParams:
     def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 8, dropout: float = 0,
-                 device="cuda", batch_size: int = 256, learning_rate: float = 0.1, optimizer=optim.Adadelta):
+                 device="cuda", learning_rate: float = 0.1, optimizer=optim.Adadelta):
         self.forward_expansion = forward_expansion
         self.heads = heads
         self.dropout = dropout
-        self.batch_size = batch_size
         self.learning_rate = learning_rate
 
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
@@ -308,7 +307,7 @@ class AbstractClassifierModel(ABC):
         # Model structure
         self.num_classes = num_classes
         self.optimizer = hyper_parameters.optimizer
-        self.max_length = input_shape[2]
+        self.max_length = input_shape[1]
 
         if self.is_file:
             self.load()
@@ -362,6 +361,12 @@ class AbstractClassifierModel(ABC):
         self.info.save()
         return None
 
+    def _number_of_iterations_per_epoch(self, batch_size) -> int:
+        num_iters = len(self.data_loader) // batch_size
+        if batch_size > len(self.data_loader):
+            num_iters = 1
+        return num_iters
+
     @staticmethod
     def accuracy(x: torch.Tensor, y: torch.Tensor):
         correct = 0
@@ -388,14 +393,6 @@ class AbstractClassifierModel(ABC):
     @property
     def _default_file_path_name(self):
         return file_path_without_extension(self.file_path)
-
-    @property
-    def _number_of_iterations_per_epoch(self) -> int:
-        num_iters = len(self.data_loader) // self.hyper_parameters.batch_size
-        if self.hyper_parameters.batch_size > len(self.data_loader):
-            num_iters = 1
-            self.hyper_parameters.batch_size = len(self.data_loader)
-        return num_iters
 
     @staticmethod
     def _minibatch_predictions(x: torch.Tensor) -> torch.Tensor:

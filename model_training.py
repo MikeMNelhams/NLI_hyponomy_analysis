@@ -1,7 +1,7 @@
 import torch.optim as optim
 from dotenv import load_dotenv
 
-import embeddings_library as embed
+from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 from data_pipeline.SNLI_data_handling import SNLI_DataLoader
 from model_library import HyperParams
 from models import NeuralNetwork, StaticEntailmentNet
@@ -18,7 +18,7 @@ def main():
 
     train_loader = SNLI_DataLoader(train_path)
     validation_loader = SNLI_DataLoader(validation_path)
-    # test_loader = SNLI_DataLoader(test_path)
+    test_loader = SNLI_DataLoader(test_path)
 
     # Here is a table of different lookup methods I have tested
     # -----------------------------------------------------------------------------------------------------#
@@ -29,7 +29,7 @@ def main():
     word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors.load_memory()
 
-    params = HyperParams(heads=5, batch_size=256, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+    params = HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
 
     # Validation Model
     # mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_small_validation0.pth',
@@ -37,9 +37,11 @@ def main():
     #                                validation_data_loader=validation_loader)
 
     # No validation model
-    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_model1.pth',
-                                   hyper_parameters=params, classifier_model=NeuralNetwork)
-    mike_net.train(epochs=30, print_every=1)
+    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_model_fast.pth',
+                                   hyper_parameters=params, classifier_model=NeuralNetwork,
+                                   validation_data_loader=validation_loader)
+    mike_net.count_parameters()
+    # mike_net.train(epochs=2, batch_size=256, print_every=1)
 
     # mike_net.history.plot_accuracy()
     # mike_net.history.plot_loss()

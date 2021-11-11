@@ -4,7 +4,7 @@ import os.path
 from dotenv import load_dotenv
 
 from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
-import embeddings_library as embed
+from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 import model_library as ml
 from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer
 import torch.optim as optim
@@ -51,7 +51,7 @@ class NeuralNet(unittest.TestCase):
         train_save_path = 'data/test_data/test_train'
 
         with TestTeardown(train_save_path):
-            params = ml.HyperParams(heads=5, batch_size=256, learning_rate=0.1, dropout=0.3, optimizer=optim.Adam)
+            params = ml.HyperParams(heads=5, learning_rate=0.1, dropout=0.3, optimizer=optim.Adam)
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params, classifier_model=NeuralNetwork)
             mike_net.train(epochs=100, print_every=10)
@@ -112,7 +112,7 @@ class Transformer(unittest.TestCase):
         train_save_path = 'data/test_data/test_train3'
 
         with TestTeardown(train_save_path):
-            params = ml.HyperParams(heads=5, batch_size=256, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+            params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params, classifier_model=EntailmentTransformer)
             mike_net.train(epochs=100, print_every=10)
@@ -146,7 +146,7 @@ class Transformer(unittest.TestCase):
         train_save_path = 'data/test_data/test_train4'
 
         with TestTeardown(train_save_path):
-            params = ml.HyperParams(heads=5, batch_size=500, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+            params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params,
                                            classifier_model=EntailmentTransformer)
@@ -156,7 +156,7 @@ class Transformer(unittest.TestCase):
         train_save_path = 'data/test_data/test_train5'
 
         with TestTeardown(train_save_path):
-            params = ml.HyperParams(heads=5, batch_size=256, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+            params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params,
                                            classifier_model=EntailmentTransformer,
