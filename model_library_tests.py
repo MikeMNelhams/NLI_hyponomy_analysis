@@ -3,7 +3,7 @@ import unittest
 import os.path
 from dotenv import load_dotenv
 
-from NLI_hyponomy_analysis.SNLI_data_handling import SNLI_DataLoader
+from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
 import embeddings_library as embed
 import model_library as ml
 from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer

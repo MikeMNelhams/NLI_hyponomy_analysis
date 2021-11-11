@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from SNLI_data_handling import SNLI_DataLoader
+from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
 
 
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
@@ -429,7 +429,7 @@ class EntailmentNet:
             for i in range(len(self.data_loader)):
                 running_loss = 0.0
 
-                inputs = self.data_loader.load_batch_random(1).to_model_data()
+                inputs = self.data_loader._load_batch_random(1).to_model_data()
                 inputs.clean_data()
 
                 labels = inputs.labels_encoding

@@ -7,7 +7,7 @@ from warnings import warn
 import numpy as np
 from nltk.corpus import wordnet as wn
 
-from NLI_hyponomy_analysis.data_pipeline import file_operations
+import file_operations
 
 
 class KS:
@@ -263,11 +263,11 @@ class DenseHyponymMatrices:
 
 
 def main():
-    hyponyms_all = Hyponyms('data/hyponyms/all_hyponyms.json')
+    hyponyms_all = Hyponyms('../data/hyponyms/all_hyponyms.json')
     vectors = hyponyms_all.vectors('data/embedding_data/glove/glove.42B.300d.txt')
     print(vectors['a'])
     density_matrices = DenseHyponymMatrices(hyponyms_all, vectors,
-                                            density_matrices_file_path="data/hyponyms/dm-50d-glove-wn.p")
+                                            density_matrices_file_path="../data/hyponyms/dm-50d-glove-wn.p")
 
     print("We built {0} density matrices".format(len(density_matrices)))
 

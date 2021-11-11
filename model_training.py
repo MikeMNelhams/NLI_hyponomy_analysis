@@ -2,9 +2,9 @@ import torch.optim as optim
 from dotenv import load_dotenv
 
 import embeddings_library as embed
-from NLI_hyponomy_analysis.SNLI_data_handling import SNLI_DataLoader
+from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
 from model_library import HyperParams
-from models import NeuralNetwork, StaticEntailmentNet, EntailmentTransformer
+from models import NeuralNetwork, StaticEntailmentNet
 
 
 def main():

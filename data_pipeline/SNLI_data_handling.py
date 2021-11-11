@@ -13,7 +13,7 @@ import torch
 from embeddings import GloveEmbedding
 from nltk.tokenize import word_tokenize
 
-from data_pipeline.file_operations import file_path_without_extension
+from file_operations import file_path_without_extension
 from word_operations import WordParser, count_max_sequence_length
 
 
