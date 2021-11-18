@@ -1,11 +1,20 @@
 from typing import Iterable
 from typing import List
 
+import re
 
-def remove_punctuation(word: str, punctuation: iter = (',', '.')) -> str:
+
+def remove_punctuation(word: str, punctuation: iter = (',', '.', '\'', '\"', "*", "?", "!", "")) -> str:
     returned_word = word
     for symbol in punctuation:
         returned_word = returned_word.replace(symbol, '')
+    return returned_word
+
+
+def regex_clean_all_punctuation(word: str) -> str:
+
+    returned_word = re.sub(r"[^A-Za-z]+", ' ', word)
+
     return returned_word
 
 
@@ -34,4 +43,4 @@ class WordParser:
 
     @staticmethod
     def default_clean() -> "WordParser":
-        return WordParser((str.lower, replace_ampersand, remove_punctuation, remove_speech_marks, str.strip))
+        return WordParser((regex_clean_all_punctuation, str.lower, str.strip))

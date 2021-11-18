@@ -30,14 +30,15 @@ def main():
     word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors.load_memory()
 
-    params = HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta,
-                         patience=10, early_stopping_mode="strict")
+    embed.remove_all_non_unique(word_vectors, train_loader.unique_words)
 
-    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_small_model3.pth',
-                                   hyper_parameters=params, classifier_model=NeuralNetwork,
-                                   validation_data_loader=validation_loader)
-    mike_net.count_parameters()
-    mike_net.train(epochs=200, batch_size=256, print_every=1)
+    # params = HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta,
+    #                      patience=10, early_stopping_mode="strict")
+    #
+    # mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_small_model3.pth',
+    #                                hyper_parameters=params, classifier_model=NeuralNetwork)
+    # mike_net.count_parameters()
+    # mike_net.train(epochs=200, batch_size=256, print_every=1)
 
     # mike_net.history.plot_accuracy()
     # mike_net.history.plot_loss()

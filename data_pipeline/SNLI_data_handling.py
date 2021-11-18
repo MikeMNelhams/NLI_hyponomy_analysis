@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os.path
 import random
@@ -13,6 +15,7 @@ import torch
 from embeddings import GloveEmbedding
 from nltk.tokenize import word_tokenize
 
+import csv
 from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_without_extension
 from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser, count_max_sequence_length
 
@@ -80,6 +83,10 @@ class SentenceBatch(Batch):
         words_list = Counter(sentences_list)
         del sentences_list
         return OrderedDict(sorted(words_list.items()))
+
+    def clean(self, clean_actions: WordParser = WordParser.default_clean()) -> None:
+        self.data = [clean_actions(row) for row in self.data]
+        return None
 
 
 class GoldLabelBatch(Batch):
@@ -308,6 +315,8 @@ class SNLI_DataLoader:
         else:
             self.max_words_in_sentence_length = max_sequence_length
 
+        self.unique_words = self.__initialise_unique_words()
+
     def __len__(self):
         return self.file_size
 
@@ -337,6 +346,31 @@ class SNLI_DataLoader:
         with open(self.__max_len_save_path, 'r') as infile:
             content = infile.read()
         return int(content)
+
+    def __initialise_unique_words(self) -> list:
+        file_path = file_path_without_extension(self.__file_path) + "_unique.csv"
+        if not os.path.isfile(file_path):
+            self.__save_unique_words()
+
+        return self.__load_unique_words()
+
+    def __save_unique_words(self) -> None:
+        save_file_path = file_path_without_extension(self.__file_path) + "_unique.csv"
+
+        with open(save_file_path, "w") as out_file:
+            writer = csv.writer(out_file)
+
+            writer.writerow(self.__get_unique_words())
+
+        return None
+
+    def __load_unique_words(self) -> list:
+        file_path = file_path_without_extension(self.__file_path) + "_unique.csv"
+
+        with open(file_path, "r") as in_file:
+            reader = csv.reader(in_file)
+            unique_words = list(reader)
+        return unique_words[0]
 
     def __get_number_lines(self) -> int:
         """ Run at init"""
@@ -427,6 +461,10 @@ class SNLI_DataLoader:
 
         return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
 
+    def load_all(self) -> DictBatch:
+        data = self._load_batch_sequential(len(self))
+        return data
+
     def load_clean_batch_sequential(self, batch_size: int, from_start: bool=False) -> EntailmentModelBatch:
         batch_data = self._load_batch_sequential(batch_size, from_start=from_start).to_model_data()
         batch_data.clean_data()
@@ -437,22 +475,30 @@ class SNLI_DataLoader:
         batch_data.clean_data()
         return batch_data
 
-    def load_clean_all(self, mode: str = "sequential"):
-        self.__assert_valid_mode(mode)
-
-        data = None
-        if mode == "sequential":
-            data = self._load_batch_sequential(len(self))
-        if mode == "random":
-            data = self._load_batch_random(len(self))
-
-        return data
-
     def term_count(self, column_name: str = "sentence1"):
-        train_data = self.load_clean_all("sequential")
+        train_data = self.load_all()
+        train_data = train_data.to_sentence_batch(column_name)
+        train_data.clean()
 
-        term_count = train_data.to_sentence_batch(column_name).word_frequency
+        term_count = train_data.word_frequency
         return term_count
+
+    def __get_unique_words(self):
+        train_data = self.load_all()
+
+        # TODO num_sentences =/= 2
+        unique_words1 = train_data.to_sentence_batch("sentence1")
+        unique_words2 = train_data.to_sentence_batch("sentence2")
+
+        unique_words1.clean()
+        unique_words2.clean()
+
+        unique_words1 = unique_words1.unique_words
+        unique_words2 = unique_words2.unique_words
+
+        all_unique_words = sorted(list(set(unique_words1).union(set(unique_words2))))
+
+        return all_unique_words
 
     def __assert_valid_mode(self, mode: str) -> None:
         if not self.__is_valid_mode(mode):
