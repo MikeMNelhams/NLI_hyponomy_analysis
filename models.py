@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from model_errors import ModelAlreadyTrainedError, ModelIsNotValidatingError
-from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History
+from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History, EarlyStoppingTraining
 
 
 class NeuralNetwork(nn.Module):
@@ -24,9 +24,11 @@ class NeuralNetwork(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x, mask):
+        x = x.masked_fill(mask == 0, 1e-20)
+
         # Input shape: (batch_size, num_sentences, embed_size, max_length)
         batch_size = x.shape[0]
-        x = x.masked_fill(mask == 0, 1e-20)
+
         x = x.reshape(batch_size, self.encoder_flattened_size)
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc2(x))
@@ -101,9 +103,11 @@ class StaticEntailmentNet(AbstractClassifierModel):
             self.__validation_data_loader = validation_data_loader
             self.__validation_save_path = self._default_file_path_name + '_validation_history.csv'
             self.validation_history = History(self.__validation_save_path)
+            self.early_stopping = EarlyStoppingTraining(patience=self.hyper_parameters.patience,
+                                                        mode=self.hyper_parameters.early_stopping_mode)
 
     def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
-        training_start_time = time.time()
+        training_start_time = time.perf_counter()
 
         if self.is_file:
             raise ModelAlreadyTrainedError(self.file_path)
@@ -129,16 +133,23 @@ class StaticEntailmentNet(AbstractClassifierModel):
                     self.__print_step(epoch=epoch, batch_step=i, loss=batch_loss, accuracy=accuracy)
                     print('-' * 50)
 
-            if self.model_is_validating:
-                self.__validate()
-
             running_accuracy = running_accuracy / number_of_iterations_per_epoch
             running_loss = running_loss / number_of_iterations_per_epoch
             self.history.step(float(running_loss), running_accuracy)
 
+            if self.model_is_validating:
+                validation_loss, _ = self.__validate()
+
+                if self.early_stopping(validation_loss):
+                    training_end_time = time.perf_counter()
+                    self.info.add_runtime(training_end_time - training_start_time)
+
+                    self.save()
+                    return None
+
         print('Finished Training.')
 
-        training_end_time = time.time()
+        training_end_time = time.perf_counter()
         self.info.add_runtime(training_end_time - training_start_time)
 
         self.save()
@@ -169,15 +180,16 @@ class StaticEntailmentNet(AbstractClassifierModel):
         accuracy = self.accuracy(predictions, labels)
         return loss, accuracy
 
-    def __validate(self, sampling_batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> None:
+    def __validate(self, sampling_batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> (float, float):
         if not self.model_is_validating:
             raise ModelIsNotValidatingError
 
         validation_loss, validation_accuracy = self.test(self.__validation_data_loader,
                                                          test_batch_size=sampling_batch_size,
                                                          criterion=criterion, print_test_type='validation')
+
         self.validation_history.step(validation_loss, validation_accuracy)
-        return None
+        return validation_loss, validation_accuracy
 
     def predict(self, batch: torch.Tensor, batch_mask: torch.Tensor = None) -> torch.Tensor:
         # Switch to eval mode, then switch back at the end.
@@ -225,7 +237,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         loss = loss / (number_of_test_iterations * max_batch_size)
         print(f'Mean {print_test_type} loss: {round(loss, 4)}. '
               f'Mean {print_test_type} accuracy: {round(accuracy * 100, 2)}%')
-        print('='*50)
+        print('=' * 50)
         self.model.train()
         return loss, accuracy
 

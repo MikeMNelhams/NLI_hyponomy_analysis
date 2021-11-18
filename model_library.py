@@ -1,5 +1,6 @@
 import os.path
 from abc import ABC, abstractmethod
+from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,20 +13,95 @@ from prettytable import PrettyTable
 from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, JSON_writer
 from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension
 
-
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
 #   Paper: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
 
 
+def method_print_decorator(func: callable, symbol='-', number_of_symbol_per_line: int=40) -> callable:
+    def wrapper(*args, **kwargs):
+        print(symbol*number_of_symbol_per_line)
+        func(*args, **kwargs)
+        print(symbol*number_of_symbol_per_line)
+    return wrapper
+
+
+class EarlyStoppingTraining:
+    """ https://clay-atlas.com/us/blog/2021/08/25/pytorch-en-early-stopping/ """
+    modes = ("strict", "moving_average")
+
+    def __init__(self, patience: int = 5, mode: str ="strict"):
+        self.step = self.__select_measure(mode)
+
+        self.patience = patience
+        self.loss_comparison = 0
+        self.trigger_times = 0
+
+    def __call__(self, loss: float) -> bool:
+        return self.step(loss)
+
+    def __select_measure(self, mode) -> Callable[[float], bool]:
+        self.assert_valid_mode(mode)
+
+        if mode == "moving_average":
+            return self.__moving_average
+
+        return self.__strict
+
+    def __strict(self, loss):
+        """ loss comparison = previous loss"""
+        if loss > self.loss_comparison:
+            self.trigger_times += 1
+            print('Trigger times:', self.trigger_times)
+
+            if self.trigger_times >= self.patience:
+                print('Training Stopped Early!')
+                return True
+        else:
+            self.trigger_times = 0
+
+        self.loss_comparison = loss
+
+        return False
+
+    def __moving_average(self, loss):
+        """ loss comparison = (loss comparison + loss) / 2"""
+        if loss > self.loss_comparison:
+            self.trigger_times += 1
+            print('Trigger times:', self.trigger_times)
+
+            if self.trigger_times >= self.patience:
+                print('Training Stopped Early!')
+                return True
+        else:
+            self.trigger_times = 0
+
+        self.loss_comparison = (self.loss_comparison + loss) / 2
+
+        return False
+
+    @staticmethod
+    def assert_valid_mode(mode) -> None:
+        if mode not in EarlyStoppingTraining.modes:
+            raise TypeError
+        return None
+
+
 class HyperParams:
     def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 8, dropout: float = 0,
-                 device="cuda", learning_rate: float = 0.1, optimizer=optim.Adadelta):
-        self.forward_expansion = forward_expansion
-        self.heads = heads
+                 device="cuda", learning_rate: float = 0.1, optimizer=optim.Adadelta,
+                 patience=5, early_stopping_mode="moving_average"):
+        # General parameters
         self.dropout = dropout
         self.learning_rate = learning_rate
-
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+
+        # Transformer parameters
+        self.forward_expansion = forward_expansion
+        self.heads = heads
+
+        # Validation parameters
+        self.patience = patience
+        self.early_stopping_mode = early_stopping_mode
 
         # Read Only Fields
         self.__optimizer = optimizer
@@ -220,12 +296,12 @@ class EntailmentTransformerBlock(nn.Module):
         self.embed_size = embed_size
         self.hyper_params = hyper_params
 
-        # Hyper Parameter unpacking
+        # Hyperparameter unpacking
         self.heads = self.hyper_params.heads
         self.forward_expansion = self.hyper_params.forward_expansion
         self.dropout = self.hyper_params.dropout
 
-        # Model structure
+        # Model Architecture
         self.attention = EntailmentSelfAttention(embed_size=self.embed_size, heads=self.heads)
         self.feed_forward = nn.Sequential(
             nn.Linear(embed_size, self.forward_expansion * embed_size),
@@ -240,8 +316,8 @@ class EntailmentTransformerBlock(nn.Module):
         attention = self.attention(value, key, query, mask)
         x = self.norm1(query + self.dropout(attention))  # Skip connection
         forward = self.feed_forward(x)
-        out = self.norm2(x + self.dropout(forward))  # Skip connection
-        return out
+        output_layer = self.norm2(x + self.dropout(forward))  # Skip connection
+        return output_layer
 
 
 class EntailmentEncoder(nn.Module):
@@ -342,16 +418,16 @@ class AbstractClassifierModel(ABC):
             total_params += param
         print(table)
         print(f"Total Trainable Params: {total_params}")
+        print("+---------------+------------+")
         return total_params
 
+    @method_print_decorator
     def load(self) -> None:
-        print('-'*50)
         print('Loading model...')
         if not self.is_file:
             raise FileNotFoundError
         self.model = torch.load(self.file_path)
         print('Model loaded!')
-        print('-' * 50)
         return None
 
     def save(self) -> None:
@@ -380,14 +456,13 @@ class AbstractClassifierModel(ABC):
         return os.path.isfile(self.file_path)
 
     @staticmethod
+    @method_print_decorator
     def print_available_devices() -> None:
-        print('-' * 50)
         print(f'{torch.cuda.device_count()} devices available')
         device_indices = list(range(torch.cuda.device_count()))
         for device_idx in device_indices:
             print('Device:', device_idx)
             print('Device Name:', torch.cuda.get_device_name(device_idx))
-        print('-' * 50)
         return None
 
     @property

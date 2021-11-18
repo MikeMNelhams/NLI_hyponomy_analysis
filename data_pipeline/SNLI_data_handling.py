@@ -37,6 +37,13 @@ class PadSizeTooSmallError(Exception):
     """Called when pad size < list size"""
 
 
+class InvalidBatchMode(Exception):
+    def __init__(self, mode):
+        valid_modes = SNLI_DataLoader.modes
+        self.message = f"The given mode: {mode} is not a valid mode. Try using one of: {valid_modes}"
+        super().__init__(self.message)
+
+
 class Batch:
     def __init__(self, list_batch: List[Any]):
         self.data = list_batch
@@ -118,8 +125,9 @@ class EntailmentModelBatch:
 
     def clean_data(self, clean_actions: WordParser = None) -> None:
         # Ternary operator for SPEED and lack of intelliJ errors
-        clean = np.vectorize(clean_actions) if clean_actions is not None \
-            else np.vectorize(WordParser.default_clean())
+        clean = np.vectorize(WordParser.default_clean())
+        if clean_actions is not None:
+            clean = np.vectorize(clean_actions)
 
         for col_index in range(self.data.shape[1]):
             self.data[:, col_index] = clean(self.data[:, col_index])
@@ -276,6 +284,8 @@ class DictBatch(Batch):
 
 
 class SNLI_DataLoader:
+    modes = ('sequential', "random")
+
     def __init__(self, file_path: str, max_sequence_length=None):
         self.__file_path = file_path
         self.__file_dir_path = os.path.dirname(file_path)
@@ -426,6 +436,32 @@ class SNLI_DataLoader:
         batch_data = self._load_batch_random(batch_size).to_model_data()
         batch_data.clean_data()
         return batch_data
+
+    def load_clean_all(self, mode: str = "sequential"):
+        self.__assert_valid_mode(mode)
+
+        data = None
+        if mode == "sequential":
+            data = self._load_batch_sequential(len(self))
+        if mode == "random":
+            data = self._load_batch_random(len(self))
+
+        return data
+
+    def term_count(self, column_name: str = "sentence1"):
+        train_data = self.load_clean_all("sequential")
+
+        term_count = train_data.to_sentence_batch(column_name).word_frequency
+        return term_count
+
+    def __assert_valid_mode(self, mode: str) -> None:
+        if not self.__is_valid_mode(mode):
+            raise InvalidBatchMode
+        return None
+
+    @staticmethod
+    def __is_valid_mode(mode: str):
+        return mode in SNLI_DataLoader.modes
 
 
 if __name__ == "__main__":
