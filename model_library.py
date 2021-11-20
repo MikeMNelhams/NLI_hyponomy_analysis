@@ -29,15 +29,23 @@ class EarlyStoppingTraining:
     """ https://clay-atlas.com/us/blog/2021/08/25/pytorch-en-early-stopping/ """
     modes = ("strict", "moving_average")
 
-    def __init__(self, patience: int = 5, mode: str ="strict"):
+    def __init__(self, save_checkpoint: Callable, patience: int = 5, mode: str ="strict"):
         self.step = self.__select_measure(mode)
 
         self.patience = patience
         self.loss_comparison = 0
         self.trigger_times = 0
 
+        # For saving checkpoints during each __call__
+        self.save_checkpoint = save_checkpoint
+
     def __call__(self, loss: float) -> bool:
         return self.step(loss)
+
+    def reset_validation_trigger(self) -> None:
+        self.trigger_times = 0
+        self.save_checkpoint()
+        return None
 
     def __select_measure(self, mode) -> Callable[[float], bool]:
         self.assert_valid_mode(mode)
@@ -47,7 +55,7 @@ class EarlyStoppingTraining:
 
         return self.__strict
 
-    def __strict(self, loss):
+    def __strict(self, loss) -> bool:
         """ loss comparison = previous loss"""
         if loss > self.loss_comparison:
             self.trigger_times += 1
@@ -57,13 +65,13 @@ class EarlyStoppingTraining:
                 print('Training Stopped Early!')
                 return True
         else:
-            self.trigger_times = 0
+            self.reset_validation_trigger()
 
         self.loss_comparison = loss
 
         return False
 
-    def __moving_average(self, loss):
+    def __moving_average(self, loss) -> bool:
         """ loss comparison = (loss comparison + loss) / 2"""
         if loss > self.loss_comparison:
             self.trigger_times += 1
@@ -73,7 +81,7 @@ class EarlyStoppingTraining:
                 print('Training Stopped Early!')
                 return True
         else:
-            self.trigger_times = 0
+            self.reset_validation_trigger()
 
         self.loss_comparison = (self.loss_comparison + loss) / 2
 
@@ -163,7 +171,7 @@ class History:
 
     def save(self) -> None:
         self.assert_not_empty()
-        print('Saving Model History...')
+        print('\033[94mSaving Model History...\033[0m')  # BLUE TEXT
         data_to_write = pd.DataFrame({'loss': self.loss, 'accuracy': self.accuracy})
         # KNOWN INSPECTION BUG FOR TO_CSV()
         # https://stackoverflow.com/questions/68787744/
@@ -431,8 +439,17 @@ class AbstractClassifierModel(ABC):
         return None
 
     def save(self) -> None:
-        print('Saving model...')
+        self.save_checkpoint()
+        self.save_model_training()
+        return None
+
+    def save_checkpoint(self) -> None:
+        print('\033[96mSaving model checkpoint...\033[0m')  # CYAN TEXT
         torch.save(self.model, self.file_path)
+        return None
+
+    def save_model_training(self) -> None:
+        print('\033[94mSaving model training...\033[0m')  # BLUE TEXT
         self.history.save()
         self.info.save()
         return None

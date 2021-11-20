@@ -103,7 +103,8 @@ class StaticEntailmentNet(AbstractClassifierModel):
             self.__validation_data_loader = validation_data_loader
             self.__validation_save_path = self._default_file_path_name + '_validation_history.csv'
             self.validation_history = History(self.__validation_save_path)
-            self.early_stopping = EarlyStoppingTraining(patience=self.hyper_parameters.patience,
+            self.early_stopping = EarlyStoppingTraining(save_checkpoint=self.save_checkpoint,
+                                                        patience=self.hyper_parameters.patience,
                                                         mode=self.hyper_parameters.early_stopping_mode)
 
     def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
@@ -144,7 +145,8 @@ class StaticEntailmentNet(AbstractClassifierModel):
                     training_end_time = time.perf_counter()
                     self.info.add_runtime(training_end_time - training_start_time)
 
-                    self.save()
+                    self.save_model_training()
+
                     return None
 
         print('Finished Training.')
@@ -243,6 +245,12 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
     def save(self) -> None:
         super().save()
+        if self.model_is_validating:
+            self.validation_history.save()
+        return None
+
+    def save_model_training(self) -> None:
+        super().save_model_training()
         if self.model_is_validating:
             self.validation_history.save()
         return None

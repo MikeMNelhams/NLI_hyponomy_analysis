@@ -104,6 +104,18 @@ class NeuralNet(unittest.TestCase):
                                        classifier_model=NeuralNetwork, validation_data_loader=self.train_loader)
         mike_net.print_available_devices()
 
+    def test_early_stopping(self):
+        train_save_path = 'data/test_data/test_train'
+
+        with TestTeardown(train_save_path):
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           classifier_model=NeuralNetwork, validation_data_loader=self.train_loader)
+            mike_net.train(500, batch_size=256)
+            # Early stopping means must not overfit, must not underfit.
+            # Model should achieve ~50% on 'strict' early stopping.
+            self.assertLess(mike_net.validation_history.accuracy[-1], 0.8)
+            self.assertGreater(mike_net.validation_history.accuracy[-1], 0.3)
+
 
 class Transformer(unittest.TestCase):
     train_small_path = "data/snli_small/snli_small1_train.jsonl"

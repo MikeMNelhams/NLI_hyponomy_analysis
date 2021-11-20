@@ -4,7 +4,11 @@ from typing import List
 import re
 
 
-def remove_punctuation(word: str, punctuation: iter = (',', '.', '\'', '\"', "*", "?", "!", "")) -> str:
+def replace_space_for_underscores(word: str) -> str:
+    return word.replace(' ', '_')
+
+
+def remove_punctuation(word: str, punctuation: iter = (',', '.', '\'', '\"', "*", "?", "!", ":")) -> str:
     returned_word = word
     for symbol in punctuation:
         returned_word = returned_word.replace(symbol, '')
