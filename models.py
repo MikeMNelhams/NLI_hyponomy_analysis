@@ -71,6 +71,8 @@ class EntailmentTransformer(nn.Module):
 
 
 class StaticEntailmentNet(AbstractClassifierModel):
+    batch_load_configs = ("sequential", "random")
+
     def __init__(self, word_vectors, train_data_loader, file_path: str,
                  hyper_parameters: HyperParams = HyperParams(), classifier_model=EntailmentTransformer,
                  validation_data_loader=None):
@@ -107,8 +109,11 @@ class StaticEntailmentNet(AbstractClassifierModel):
                                                         patience=self.hyper_parameters.patience,
                                                         mode=self.hyper_parameters.early_stopping_mode)
 
-    def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
+    def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), batch_loading_mode="sequential",
+              print_every: int = 1):
         training_start_time = time.perf_counter()
+
+        batch_loading_function = self.__load_clean_batch(batch_loading_mode)
 
         if self.is_file:
             raise ModelAlreadyTrainedError(self.file_path)
@@ -124,7 +129,8 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 should_print = i % print_every == print_every - 1
                 if should_print:
                     print(f'Training batch: {i} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
-                loss, accuracy = self.__train_batch(batch_size=batch_size, criterion=criterion)
+                loss, accuracy = self.__train_batch(batch_loader=batch_loading_function,
+                                                    batch_size=batch_size, criterion=criterion)
 
                 # print statistics
                 batch_loss = loss.item()
@@ -157,8 +163,12 @@ class StaticEntailmentNet(AbstractClassifierModel):
         self.save()
         return None
 
-    def __train_batch(self, batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> (float, float):
-        batch = self.data_loader.load_clean_batch_random(batch_size)
+    def __train_batch(self, batch_loader: callable,
+                      batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> (float, float):
+
+        valid_batch_size = min(len(self.data_loader), batch_size)
+
+        batch = batch_loader(valid_batch_size)
 
         inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20, max_length=self.max_length)
         labels = batch.labels_encoding
@@ -259,3 +269,23 @@ class StaticEntailmentNet(AbstractClassifierModel):
     def __print_step(epoch, batch_step, loss, accuracy):
         print('[%d, %5d] loss: %.4f \t accuracy: %.2f' %
               (epoch + 1, batch_step + 1, float(loss), 100 * accuracy))
+
+    @staticmethod
+    def __assert_valid_batch_load_config(config: str) -> None:
+        valid_configs = StaticEntailmentNet.batch_load_configs
+        error_message = f"Invalid batch load config: {config}. Try one of {valid_configs}"
+        assert config in valid_configs, Exception(error_message)
+        return None
+
+    def __load_clean_batch(self, batch_load_config="random"):
+        self.__assert_valid_batch_load_config(batch_load_config)
+
+        if batch_load_config == "random":
+            return self.data_loader.load_clean_batch_random
+
+        if batch_load_config == "sequential":
+            return self.data_loader.load_clean_batch_sequential
+
+        # If a batch load config is given that is somehow valid:
+        #  -> it must not be implemented.
+        raise NotImplementedError

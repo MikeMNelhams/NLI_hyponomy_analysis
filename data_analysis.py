@@ -114,7 +114,7 @@ class DataAnalysis:
         return None
 
     def plot_word_cumulative_frequency(self, sentence_name: str="sentence1", dataset_name: str="Training") -> None:
-        # TODO Fix this the AXIS ARE FLIPPED!!
+        # TODO Fix this the AXES ARE FLIPPED!!
         figure_params = WordFrequencyFigureParams(dataset_name=f"{dataset_name} data: {sentence_name}",
                                                   number_to_display=-1, is_standardized=True)
 
