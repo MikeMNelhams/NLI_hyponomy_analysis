@@ -1,5 +1,6 @@
 import json
 import os
+import random
 
 
 class InvalidPathError(Exception):
@@ -72,7 +73,3 @@ class JSON_writer:
         with open(self.file_path, 'w') as json_file:
             json.dump(self.data, json_file)
         return None
-
-
-
-
