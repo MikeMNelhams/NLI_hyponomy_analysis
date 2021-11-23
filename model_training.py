@@ -41,11 +41,11 @@ def main():
 
     mike_net.count_parameters()
 
-    # mike_net.train(epochs=100, batch_size=256, print_every=1)
+    mike_net.train(epochs=100, batch_size=256, print_every=1)
 
     # mike_net.history.plot_accuracy()
     # mike_net.history.plot_loss()
-    mike_net.test(validation_loader)
+    # mike_net.test(validation_loader)
 
 
 if __name__ == '__main__':

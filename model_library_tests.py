@@ -111,7 +111,7 @@ class NeuralNet(unittest.TestCase):
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            classifier_model=NeuralNetwork, validation_data_loader=self.train_loader)
             mike_net.train(500, batch_size=256)
-            # Early stopping means must not overfit, must not underfit.
+            # Early stopping means must not overfit on validation data.
             # Model should achieve ~50% on 'strict' early stopping.
             self.assertLess(mike_net.validation_history.accuracy[-1], 0.8)
             self.assertGreater(mike_net.validation_history.accuracy[-1], 0.3)
