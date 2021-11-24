@@ -84,7 +84,8 @@ class StaticEntailmentNet(AbstractClassifierModel):
             max_length = max(max_length, validation_data_loader.max_words_in_sentence_length)
 
         embed_size = word_vectors.d_emb
-        num_classes = 3  # Definition of problem means this is always 3 (4 if you want a 'not sure')
+        # TODO make this dynamic based on data loader.
+        num_classes = 4  # 0, 1, 2, 3. Entailment, Neutral, Contradiction, -
 
         input_shape = (train_data_loader.num_sentences, max_length, embed_size)
 
