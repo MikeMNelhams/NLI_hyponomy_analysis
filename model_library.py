@@ -1,6 +1,7 @@
 import os.path
 from abc import ABC, abstractmethod
 from typing import Callable
+from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,6 +13,8 @@ from prettytable import PrettyTable
 
 from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, JSON_writer
 from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension
+
+from sklearn.metrics import confusion_matrix, accuracy_score
 
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
 #   Paper: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
@@ -126,12 +129,16 @@ class HyperParams:
 
 class History:
     """ Uses a csv file to save its loss and accuracy"""
-    def __init__(self, file_path: str, precision: int = 4):
+    def __init__(self, file_path: str, precision: int = 4, additional_metrics: List[Callable] = ()):
         self.__file_path = file_path
         self.__precision = precision
 
         self.__loss = []
         self.__accuracy = []
+        self.__metric_functions = additional_metrics
+
+        if self.__metric_functions is not None:
+            self.__additional_metrics = {func.__name__: [] for func in self.__metric_functions}
 
         if self.is_file():
             self.load()
@@ -152,6 +159,10 @@ class History:
         return self.__loss
 
     @property
+    def tracking_additional_metrics(self):
+        return self.__metric_functions is not None
+
+    @property
     def accuracy(self):
         return self.__accuracy
 
@@ -164,15 +175,25 @@ class History:
             raise ValueError
         return None
 
-    def step(self, loss, accuracy) -> None:
+    def step(self, loss, accuracy, additional_metrics: dict= None) -> None:
         self.loss.append(round(loss, self.precision))
         self.accuracy.append(round(accuracy, self.precision))
+
+        if additional_metrics is not None:
+            for key, value in additional_metrics.items():
+                self.__additional_metrics[key].append(value)
+
         return None
 
     def save(self) -> None:
         self.assert_not_empty()
         print('\033[94mSaving Model History...\033[0m')  # BLUE TEXT
         data_to_write = pd.DataFrame({'loss': self.loss, 'accuracy': self.accuracy})
+
+        if self.tracking_additional_metrics:
+            for key, value in self.__additional_metrics.items():
+                data_to_write[key] = value
+
         # KNOWN INSPECTION BUG FOR TO_CSV()
         # https://stackoverflow.com/questions/68787744/
         #   pycharm-type-checker-expected-type-none-got-str-instead-when-using-pandas-d
@@ -186,6 +207,14 @@ class History:
         data_from_file = pd.read_csv(self.file_path)
         self.__loss = data_from_file['loss'].tolist()
         self.__accuracy = data_from_file['accuracy'].tolist()
+
+        if self.tracking_additional_metrics:
+            data_from_file.pop('loss')
+            data_from_file.pop('accuracy')
+
+            for key, value in data_from_file.items():
+                self.__additional_metrics[key] = data_from_file[key].tolist()
+
         return None
 
     def plot_loss(self) -> None:
@@ -205,6 +234,33 @@ class History:
         plt.ylabel('Accuracy')
         plt.show()
         return None
+
+
+class ValidationMetrics:
+    def __init__(self, predictions: torch.Tensor, labels: torch.Tensor):
+
+        self.confusion_mtrx = confusion_matrix(predictions, labels)
+        self.accuracy = accuracy_score(predictions, labels)
+
+    @property
+    def recall(self):
+        recall = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=1)
+        recall_mean = np.mean(recall)
+        return recall_mean
+
+    @property
+    def precision(self):
+        precision = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=0)
+        precision_mean = np.mean(precision)
+        return precision_mean
+
+    @property
+    def f1_score(self):
+        precision = self.precision
+        recall = self.recall
+
+        f1_score = 2 * (precision * recall) / (precision + recall)
+        return f1_score
 
 
 class AdditionalInformation(JSON_writer):
@@ -489,6 +545,10 @@ class AbstractClassifierModel(ABC):
     @staticmethod
     def _minibatch_predictions(x: torch.Tensor) -> torch.Tensor:
         return torch.argmax(x, dim=1)
+
+    @staticmethod
+    def validation_metrics(predictions: torch.Tensor, labels: torch.Tensor) -> ValidationMetrics:
+        return ValidationMetrics(predictions, labels)
 
 
 def main():

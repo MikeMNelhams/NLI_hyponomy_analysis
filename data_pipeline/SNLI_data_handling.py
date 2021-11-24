@@ -66,7 +66,7 @@ class SentenceBatch(Batch):
         self.data = list_of_sentences
 
     @property
-    def word_frequency(self):
+    def word_frequency(self) -> OrderedDict:
         return self.__get_unique_words()
 
     @property
@@ -94,18 +94,24 @@ class GoldLabelBatch(Batch):
         super().__init__(list_of_labels)
         self.data = list_of_labels
 
+    @property
+    def label_count(self):
+        words_list: dict = Counter(self.data)
+        return OrderedDict(sorted(words_list.items()))
+
 
 class EntailmentModelBatch:
     """ [[sentence1: str], [sentence2: str], [label: str]]"""
 
-    class_label_encoding = {'entailment': 0,
-                            'neutral': 1,
-                            'contradiction': 2,
-                            'contradictio': 2,
-                            '-': 1}
-
     def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable,
                  max_sequence_len: int, word_delimiter=' '):
+
+        self.class_label_encoding = {'entailment': 0,
+                                     'neutral': 1,
+                                     'contradiction': 2,
+                                     'contradictio': 2,
+                                     '-': 3}
+
         self.data = np.array((sentence1_batch, sentence2_batch, labels)).T
         self.batch_size = self.data.shape[0]
         self.num_sentences = self.data.shape[1] - 1
@@ -251,9 +257,9 @@ class EntailmentModelBatch:
     def __get_labels_encoding(self) -> torch.tensor:
         label_column_number = self.data.shape[1] - 1
 
-        label_encodings = [EntailmentModelBatch.class_label_encoding[label]
+        label_encodings = [self.class_label_encoding[label]
                            if label != ''
-                           else EntailmentModelBatch.class_label_encoding['-']
+                           else self.class_label_encoding['-']
                            for label in self.data[:, label_column_number]]
 
         one_hot_labels = torch.tensor(label_encodings)
@@ -485,13 +491,18 @@ class SNLI_DataLoader:
         batch_data.clean_data()
         return batch_data
 
-    def term_count(self, column_name: str = "sentence1"):
+    def term_count(self, column_name: str = "sentence1") -> OrderedDict:
         train_data = self.load_all()
         train_data = train_data.to_sentence_batch(column_name)
         train_data.clean()
 
         term_count = train_data.word_frequency
         return term_count
+
+    def label_count(self) -> OrderedDict:
+        batch = self._load_batch_sequential(len(self)).to_labels_batch()
+        label_count = batch.label_count
+        return label_count
 
     def __get_unique_words(self):
         train_data = self.load_all()
