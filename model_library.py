@@ -129,7 +129,7 @@ class HyperParams:
 
 class History:
     """ Uses a csv file to save its loss and accuracy"""
-    def __init__(self, file_path: str, precision: int = 4, additional_metrics: List[Callable] = ()):
+    def __init__(self, file_path: str, precision: int = 4, additional_metrics: List[str] = ()):
         self.__file_path = file_path
         self.__precision = precision
 
@@ -137,8 +137,8 @@ class History:
         self.__accuracy = []
         self.__metric_functions = additional_metrics
 
-        if self.__metric_functions is not None:
-            self.__additional_metrics = {func.__name__: [] for func in self.__metric_functions}
+        if self.tracking_additional_metrics:
+            self.__additional_metrics = {metric: [] for metric in self.__metric_functions}
 
         if self.is_file():
             self.load()
@@ -236,31 +236,71 @@ class History:
         return None
 
 
-class ValidationMetrics:
+class Metrics:
     def __init__(self, predictions: torch.Tensor, labels: torch.Tensor):
 
         self.confusion_mtrx = confusion_matrix(predictions, labels)
-        self.accuracy = accuracy_score(predictions, labels)
+        self.__accuracy = accuracy_score(predictions, labels)
 
-    @property
-    def recall(self):
+    def recall(self) -> float:
         recall = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=1)
-        recall_mean = np.mean(recall)
+        recall_mean = float(np.mean(recall))
         return recall_mean
 
-    @property
-    def precision(self):
+    def precision(self) -> float:
         precision = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=0)
-        precision_mean = np.mean(precision)
+        precision_mean = float(np.mean(precision))
         return precision_mean
 
-    @property
-    def f1_score(self):
-        precision = self.precision
-        recall = self.recall
+    def f1_score(self) -> float:
+        precision = self.precision()
+        recall = self.recall()
 
         f1_score = 2 * (precision * recall) / (precision + recall)
         return f1_score
+
+    def accuracy(self) -> float:
+        return self.__accuracy
+
+
+class MetricEvaluator:
+    metric_scores = ("recall", "precision", "f1_score", "accuracy")
+
+    class InvalidMetricError(Exception):
+        def __init__(self, metric_name: str):
+            message = f"The given metric: {metric_name} is invalid. Try one of {MetricEvaluator.metric_scores}."
+            super().__init__(message)
+
+    def __init__(self, *metric_names):
+        for metric in metric_names:
+            self.__assert_valid_metric(metric)
+
+        self.metrics_to_track = metric_names
+
+    def __len__(self):
+        return len(self.metrics_to_track)
+
+    def evaluate(self, predictions: torch.Tensor, labels: torch.Tensor) -> List[float]:
+        metrics = Metrics(predictions, labels)
+
+        metric_functions = [self.__get_metric(metric, metrics) for metric in self.metrics_to_track]
+        metrics_evaluated = [metric_function() for metric_function in metric_functions]
+        return metrics_evaluated
+
+    @staticmethod
+    def __get_metric(metric_func_name: str, metrics_instance: Metrics) -> Callable:
+        metric_function = getattr(metrics_instance, metric_func_name)
+        return metric_function
+
+    @staticmethod
+    def __assert_valid_metric(metric_name: str) -> None:
+        assert metric_name in MetricEvaluator.metric_scores, MetricEvaluator.InvalidMetricError
+        return None
+
+    @staticmethod
+    def print_all_metric_types() -> None:
+        print(MetricEvaluator.metric_scores)
+        return None
 
 
 class AdditionalInformation(JSON_writer):
@@ -547,8 +587,9 @@ class AbstractClassifierModel(ABC):
         return torch.argmax(x, dim=1)
 
     @staticmethod
-    def validation_metrics(predictions: torch.Tensor, labels: torch.Tensor) -> ValidationMetrics:
-        return ValidationMetrics(predictions, labels)
+    def _track_metrics(*metric_names):
+        metric_evaluator = MetricEvaluator(metric_names)
+        return metric_evaluator
 
 
 def main():
