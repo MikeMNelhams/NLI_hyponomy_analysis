@@ -17,9 +17,9 @@ def main():
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
     validation_small_path = "data/snli_small/snli_small1_dev.jsonl"
 
-    train_loader = SNLI_DataLoaderOptimized(train_path)
+    train_loader = SNLI_DataLoaderOptimized(train_small_path)
 
-    validation_loader = SNLI_DataLoaderOptimized(validation_path)
+    validation_loader = SNLI_DataLoaderOptimized(validation_small_path)
     # test_loader = SNLI_DataLoaderOptimized(test_path)
 
     # Here is a table of different lookup methods I have tested
@@ -36,16 +36,16 @@ def main():
     params = HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta,
                          patience=5, early_stopping_mode="strict")
 
-    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/test_model3.pth',
+    mike_net = StaticEntailmentNet(word_vectors, train_loader, file_path='data/models/nn/nn_model_small1.pth',
                                    hyper_parameters=params, classifier_model=NeuralNetwork,
                                    validation_data_loader=validation_loader)
 
     mike_net.count_parameters()
 
-    mike_net.train(epochs=100, batch_size=1920, print_every=1)
+    mike_net.train(epochs=100, batch_size=256, print_every=1)
 
-    # mike_net.history.plot_accuracy()
-    # mike_net.history.plot_loss()
+    mike_net.history.plot_accuracy()
+    mike_net.history.plot_loss()
     # mike_net.test(validation_loader)
 
 

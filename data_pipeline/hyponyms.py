@@ -186,7 +186,7 @@ class DenseHyponymMatrices:
 
         self.density_matrices = None
         if not self.file_exists or self.file_empty:
-            self.density_matrices = self.__generate_density_matrices(hyponyms.hyponyms,
+            self.density_matrices = self.__density_matrices(hyponyms.hyponyms,
                                                                      hyponym_vectors)
             self.__save_density_matrices_to_pickle()
         else:
@@ -207,8 +207,8 @@ class DenseHyponymMatrices:
     def file_empty(self):
         return self.file_exists and os.stat(self.density_matrices_file_path).st_size == 0
 
-    def __generate_density_matrices(self, hyp_dict: dict, hypo_vectors: dict):
-        dim = len(random.choice(list(hypo_vectors.values())))  # dim= length of arbitrary vector
+    def __density_matrices(self, hyp_dict: dict, hypo_vectors: dict):
+        dim = len(random.choice(list(hypo_vectors.values())))  # dim= length of arbitrary vector, all same
         vocab = list(hyp_dict.keys())
         vectors = {word: np.zeros([dim, dim]) for word in vocab}
 

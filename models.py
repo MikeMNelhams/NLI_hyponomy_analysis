@@ -1,5 +1,4 @@
 import time
-
 import torch
 from torch import nn
 
@@ -101,6 +100,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         self.num_sentences = train_data_loader.num_sentences
         self.max_length = max_length
 
+        # Validation
         self.model_is_validating = model_is_validating
         if self.model_is_validating:
             self.__validation_data_loader = validation_data_loader
@@ -131,7 +131,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 if should_print:
                     print(f'Training batch: {i} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
                 loss, accuracy = self.__train_batch(batch_loader=batch_loading_function,
-                                                    batch_size=batch_size, criterion=criterion)
+                                                            batch_size=batch_size, criterion=criterion)
 
                 # print statistics
                 batch_loss = loss.item()
@@ -143,7 +143,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
             running_accuracy = running_accuracy / number_of_iterations_per_epoch
             running_loss = running_loss / number_of_iterations_per_epoch
-            self.history.step(float(running_loss), running_accuracy)
+            scores = None
 
             if self.model_is_validating:
                 validation_loss, _ = self.__validate()
@@ -155,6 +155,8 @@ class StaticEntailmentNet(AbstractClassifierModel):
                     self.save_model_training()
 
                     return None
+
+            self.history.step(float(running_loss), running_accuracy, scores)
 
         print('Finished Training.')
 

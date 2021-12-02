@@ -68,11 +68,14 @@ class DataAnalysis:
 
         return words, frequencies
 
-    def label_frequency(self) -> [np.array, np.array]:
+    def label_frequency(self, figure_params: FigureParams) -> [np.array, np.array]:
         label_count = self.__data_loader.label_count()
 
         labels = np.array(list(label_count.keys()))
         frequencies = np.array(list(label_count.values()))
+
+        if figure_params.is_standardized:
+            frequencies = frequencies / float(np.std(frequencies))
 
         return labels, frequencies
 
@@ -154,14 +157,15 @@ class DataAnalysis:
         plt.show()
         return None
 
-    def plot_label_histogram(self, dataset_name: str="Training") -> None:
-        figure_params = FrequencyFigureParams(dataset_name=f"{dataset_name} labels")
+    def plot_label_histogram(self, dataset_name: str="Training", color="blue") -> None:
+        figure_params = FrequencyFigureParams(dataset_name=f"{dataset_name} labels", is_standardized=True,
+                                              x_label="Label", y_label="Relative Frequency")
 
-        x_ticks, frequencies = self.label_frequency()
+        x_ticks, frequencies = self.label_frequency(figure_params)
 
         x_ticks[0] = 'unknown'
 
-        plt.bar(x_ticks, frequencies)
+        plt.bar(x_ticks, frequencies, color=color)
         plt.xticks(x_ticks, x_ticks, rotation='vertical')
 
         # Figure labels
@@ -220,7 +224,13 @@ def train_word_frequency_cumulative():
 def train_label_histogram():
     training_data_analysis = DataAnalysis("data/snli_1.0/snli_1.0_train.jsonl")
 
-    training_data_analysis.plot_label_histogram("Training")
+    training_data_analysis.plot_label_histogram("Training", color="blue")
+
+
+def validation_label_histogram():
+    validation_data_analysis = DataAnalysis("data/snli_1.0/snli_1.0_dev.jsonl")
+
+    validation_data_analysis.plot_label_histogram("Validation", color="red")
 
 
 def validation_word_frequency_histogram():
@@ -245,3 +255,4 @@ def test_word_frequency_histogram():
 
 if __name__ == "__main__":
     train_label_histogram()
+    validation_label_histogram()

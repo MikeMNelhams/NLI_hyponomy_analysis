@@ -1,7 +1,7 @@
 import os.path
 from abc import ABC, abstractmethod
 from typing import Callable
-from typing import List
+from typing import Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -127,18 +127,89 @@ class HyperParams:
         return self.__num_layers
 
 
+class Metrics:
+    def __init__(self, predictions: torch.Tensor, labels: torch.Tensor):
+        self.confusion_mtrx = confusion_matrix(predictions, labels)
+        self.__accuracy = accuracy_score(predictions, labels)
+
+    def recall(self) -> float:
+        recall = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=1)
+        recall_mean = float(np.mean(recall))
+        return recall_mean
+
+    def precision(self) -> float:
+        precision = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=0)
+        precision_mean = float(np.mean(precision))
+        return precision_mean
+
+    def f1_score(self) -> float:
+        precision = self.precision()
+        recall = self.recall()
+
+        f1_score = 2 * (precision * recall) / (precision + recall)
+        return f1_score
+
+    def accuracy(self) -> float:
+        return self.__accuracy
+
+
+class MetricEvaluator:
+    metric_scores = ("recall", "precision", "f1_score", "accuracy")
+
+    class InvalidMetricError(Exception):
+        def __init__(self, metric_name: str):
+            message = f"The given metric: {metric_name} is invalid. Try one of {MetricEvaluator.metric_scores}."
+            super().__init__(message)
+
+    def __init__(self, *metric_names):
+        for metric in metric_names:
+            self.__assert_valid_metric(metric)
+
+        self.metrics_to_track = metric_names
+
+    def __len__(self):
+        return len(self.metrics_to_track)
+
+    def __str__(self):
+        return str(self.metrics_to_track)
+
+    def __call__(self, predictions: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:
+        return self.evaluate(predictions, labels)
+
+    def evaluate(self, predictions: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:
+        metrics = Metrics(predictions, labels)
+
+        metric_functions = [self.__get_metric(metric, metrics) for metric in self.metrics_to_track]
+        metrics_evaluated = {metric: metric_function()
+                             for metric_function, metric in zip(metric_functions, self.metrics_to_track)}
+        return metrics_evaluated
+
+    @staticmethod
+    def __get_metric(metric_func_name: str, metrics_instance: Metrics) -> Callable:
+        metric_function = getattr(metrics_instance, metric_func_name)
+        return metric_function
+
+    @staticmethod
+    def __assert_valid_metric(metric_name: str) -> None:
+        assert metric_name in MetricEvaluator.metric_scores, MetricEvaluator.InvalidMetricError
+        return None
+
+    @staticmethod
+    def print_all_metric_types() -> None:
+        print(MetricEvaluator.metric_scores)
+        return None
+
+
 class History:
     """ Uses a csv file to save its loss and accuracy"""
-    def __init__(self, file_path: str, precision: int = 4, additional_metrics: List[str] = ()):
+    def __init__(self, file_path: str, decimal_places: int = 4):
         self.__file_path = file_path
-        self.__precision = precision
+        self.__decimal_places = decimal_places
 
         self.__loss = []
         self.__accuracy = []
-        self.__metric_functions = additional_metrics
 
-        if self.tracking_additional_metrics:
-            self.__additional_metrics = {metric: [] for metric in self.__metric_functions}
+        self.__additional_metrics = None
 
         if self.is_file():
             self.load()
@@ -151,8 +222,8 @@ class History:
         return self.__file_path
 
     @property
-    def precision(self):
-        return self.__precision
+    def decimal_places(self):
+        return self.__decimal_places
 
     @property
     def loss(self):
@@ -160,7 +231,7 @@ class History:
 
     @property
     def tracking_additional_metrics(self):
-        return self.__metric_functions is not None
+        return self.__additional_metrics is not None
 
     @property
     def accuracy(self):
@@ -175,14 +246,19 @@ class History:
             raise ValueError
         return None
 
-    def step(self, loss, accuracy, additional_metrics: dict= None) -> None:
-        self.loss.append(round(loss, self.precision))
-        self.accuracy.append(round(accuracy, self.precision))
+    def step(self, loss, accuracy, additional_metrics: Dict[str, float]=None) -> None:
+        self.loss.append(round(loss, self.decimal_places))
+        self.accuracy.append(round(accuracy, self.decimal_places))
 
         if additional_metrics is not None:
             for key, value in additional_metrics.items():
                 self.__additional_metrics[key].append(value)
 
+        return None
+
+    def track_metrics(self, metric_evaluator: MetricEvaluator) -> None:
+        self.__additional_metrics = {metric: [np.nan for _ in range(len(self.loss))]
+                                     for metric in metric_evaluator.metrics_to_track}
         return None
 
     def save(self) -> None:
@@ -233,73 +309,6 @@ class History:
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         plt.show()
-        return None
-
-
-class Metrics:
-    def __init__(self, predictions: torch.Tensor, labels: torch.Tensor):
-
-        self.confusion_mtrx = confusion_matrix(predictions, labels)
-        self.__accuracy = accuracy_score(predictions, labels)
-
-    def recall(self) -> float:
-        recall = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=1)
-        recall_mean = float(np.mean(recall))
-        return recall_mean
-
-    def precision(self) -> float:
-        precision = np.diag(self.confusion_mtrx) / np.sum(self.confusion_mtrx, axis=0)
-        precision_mean = float(np.mean(precision))
-        return precision_mean
-
-    def f1_score(self) -> float:
-        precision = self.precision()
-        recall = self.recall()
-
-        f1_score = 2 * (precision * recall) / (precision + recall)
-        return f1_score
-
-    def accuracy(self) -> float:
-        return self.__accuracy
-
-
-class MetricEvaluator:
-    metric_scores = ("recall", "precision", "f1_score", "accuracy")
-
-    class InvalidMetricError(Exception):
-        def __init__(self, metric_name: str):
-            message = f"The given metric: {metric_name} is invalid. Try one of {MetricEvaluator.metric_scores}."
-            super().__init__(message)
-
-    def __init__(self, *metric_names):
-        for metric in metric_names:
-            self.__assert_valid_metric(metric)
-
-        self.metrics_to_track = metric_names
-
-    def __len__(self):
-        return len(self.metrics_to_track)
-
-    def evaluate(self, predictions: torch.Tensor, labels: torch.Tensor) -> List[float]:
-        metrics = Metrics(predictions, labels)
-
-        metric_functions = [self.__get_metric(metric, metrics) for metric in self.metrics_to_track]
-        metrics_evaluated = [metric_function() for metric_function in metric_functions]
-        return metrics_evaluated
-
-    @staticmethod
-    def __get_metric(metric_func_name: str, metrics_instance: Metrics) -> Callable:
-        metric_function = getattr(metrics_instance, metric_func_name)
-        return metric_function
-
-    @staticmethod
-    def __assert_valid_metric(metric_name: str) -> None:
-        assert metric_name in MetricEvaluator.metric_scores, MetricEvaluator.InvalidMetricError
-        return None
-
-    @staticmethod
-    def print_all_metric_types() -> None:
-        print(MetricEvaluator.metric_scores)
         return None
 
 
@@ -474,6 +483,9 @@ class AbstractClassifierModel(ABC):
         # File I/O
         assert file_path_is_of_extension(file_path, '.pth'), FileNotFoundError
         self.file_path = file_path
+
+        self.metric_evaluator = None
+
         self.history_file_path = self._default_file_path_name + '_history.csv'
         self.history = History(self.history_file_path)  # For recording information
 
@@ -489,14 +501,22 @@ class AbstractClassifierModel(ABC):
         self.optimizer = hyper_parameters.optimizer
         self.max_length = input_shape[1]
 
+        # Construct the model
+        self.model = None
+        self.optimizer = hyper_parameters.optimizer
+        self._construct_model(classifier_model=classifier_model)
+
+    def _construct_model(self, classifier_model: Callable) -> None:
         if self.is_file:
             self.load()
-        else:
-            self.model = classifier_model(self.input_shape,
-                                          max_seq_len=self.max_length,
-                                          hyper_parameters=hyper_parameters,
-                                          number_of_output_classes=self.num_classes).to(hyper_parameters.device)
-            self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
+            return None
+        self.model = classifier_model(self.input_shape,
+                                      max_seq_len=self.max_length,
+                                      hyper_parameters=self.hyper_parameters,
+                                      number_of_output_classes=self.num_classes).to(self.hyper_parameters.device)
+
+        self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
+        return None
 
     @abstractmethod
     def train(self, epochs: int, criterion=nn.CrossEntropyLoss(), print_every: int = 1):
@@ -510,6 +530,10 @@ class AbstractClassifierModel(ABC):
     def test(self, test_data_loader,
              test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
         raise NotImplementedError
+
+    # def track_metrics(self, *metric_names) -> None:
+    #     self.metric_evaluator = MetricEvaluator(metric_names)
+    #     return None
 
     def count_parameters(self):
         table = PrettyTable(["Modules", "Parameters"])
@@ -586,10 +610,9 @@ class AbstractClassifierModel(ABC):
     def _minibatch_predictions(x: torch.Tensor) -> torch.Tensor:
         return torch.argmax(x, dim=1)
 
-    @staticmethod
-    def _track_metrics(*metric_names):
-        metric_evaluator = MetricEvaluator(metric_names)
-        return metric_evaluator
+    # @property
+    # def is_tracking_metrics(self):
+    #     return self.metric_evaluator is not None
 
 
 def main():
