@@ -30,7 +30,7 @@ def method_print_decorator(func: callable, symbol='-', number_of_symbol_per_line
 
 class EarlyStoppingTraining:
     """ https://clay-atlas.com/us/blog/2021/08/25/pytorch-en-early-stopping/ """
-    modes = ("strict", "moving_average")
+    modes = ("strict", "moving_average", "none")
 
     def __init__(self, save_checkpoint: Callable, patience: int = 5, mode: str ="strict"):
         self.step = self.__select_measure(mode)
@@ -55,6 +55,9 @@ class EarlyStoppingTraining:
 
         if mode == "moving_average":
             return self.__moving_average
+
+        if mode == "none":
+            return self.__none
 
         return self.__strict
 
@@ -88,6 +91,10 @@ class EarlyStoppingTraining:
 
         self.loss_comparison = (self.loss_comparison + loss) / 2
 
+        return False
+
+    def __none(self, loss) -> bool:
+        self.reset_validation_trigger()
         return False
 
     @staticmethod
@@ -202,7 +209,7 @@ class MetricEvaluator:
 
 class History:
     """ Uses a csv file to save its loss and accuracy"""
-    def __init__(self, file_path: str, decimal_places: int = 4):
+    def __init__(self, file_path: str, decimal_places: int = 4, label="training"):
         self.__file_path = file_path
         self.__decimal_places = decimal_places
 
@@ -213,6 +220,8 @@ class History:
 
         if self.is_file():
             self.load()
+
+        self.label = label
 
     def __len__(self):
         return len(self.loss)
@@ -293,23 +302,39 @@ class History:
 
         return None
 
-    def plot_loss(self) -> None:
+    def plot_loss(self, axes=None, title='') -> plt.axes:
         assert self.is_file(), FileNotFoundError
         epoch_steps = range(len(self))
-        plt.plot(epoch_steps, self.loss)
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.show()
-        return None
 
-    def plot_accuracy(self) -> None:
+        ax = axes
+        if axes is None:
+            fig, ax = plt.subplots()
+
+        ax.plot(epoch_steps, self.loss, label=self.label)
+        ax.set_title(title)
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+
+        ax.legend()
+
+        return ax
+
+    def plot_accuracy(self, axes=None, title='') -> plt.axes:
         assert self.is_file(), FileNotFoundError
         epoch_steps = range(len(self))
-        plt.plot(epoch_steps, self.accuracy)
-        plt.xlabel('Epoch')
-        plt.ylabel('Accuracy')
-        plt.show()
-        return None
+
+        ax = axes
+        if axes is None:
+            fig, ax = plt.subplots()
+
+        ax.plot(epoch_steps, self.accuracy, label=self.label)
+        ax.set_title(title)
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Accuracy')
+
+        ax.legend()
+
+        return ax
 
 
 class AdditionalInformation(JSON_writer):
@@ -487,7 +512,7 @@ class AbstractClassifierModel(ABC):
         self.metric_evaluator = None
 
         self.history_file_path = self._default_file_path_name + '_history.csv'
-        self.history = History(self.history_file_path)  # For recording information
+        self.history = History(self.history_file_path, label="Training")  # For recording information
 
         self.info_file_path = self._default_file_path_name + '_info.json'
         self.info = AdditionalInformation(self.info_file_path)
@@ -573,6 +598,14 @@ class AbstractClassifierModel(ABC):
         self.history.save()
         self.info.save()
         return None
+
+    def plot_accuracy(self, title='') -> plt.axes:
+        ax = self.history.plot_accuracy(title=title)
+        return ax
+
+    def plot_loss(self, title='') -> plt.axes:
+        ax = self.history.plot_loss(title=title)
+        return ax
 
     def _number_of_iterations_per_epoch(self, batch_size) -> int:
         num_iters = len(self.data_loader) // batch_size

@@ -2,6 +2,8 @@ import time
 import torch
 from torch import nn
 
+import matplotlib.pyplot as plt
+
 from model_errors import ModelAlreadyTrainedError, ModelIsNotValidatingError
 from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History, EarlyStoppingTraining
 
@@ -105,7 +107,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         if self.model_is_validating:
             self.__validation_data_loader = validation_data_loader
             self.__validation_save_path = self._default_file_path_name + '_validation_history.csv'
-            self.validation_history = History(self.__validation_save_path)
+            self.validation_history = History(self.__validation_save_path, label="Validation")
             self.early_stopping = EarlyStoppingTraining(save_checkpoint=self.save_checkpoint,
                                                         patience=self.hyper_parameters.patience,
                                                         mode=self.hyper_parameters.early_stopping_mode)
@@ -267,6 +269,19 @@ class StaticEntailmentNet(AbstractClassifierModel):
         if self.model_is_validating:
             self.validation_history.save()
         return None
+
+    def plot_accuracy(self, title='') -> plt.axes:
+        ax = super().plot_accuracy(title=title)
+        ax = self.validation_history.plot_accuracy(title=title, axes=ax)
+
+        plt.savefig(self._default_file_path_name + title.strip().lower())
+        return ax
+
+    def plot_loss(self, title='') -> plt.axes:
+        ax = super().plot_loss(title=title)
+        ax = self.validation_history.plot_loss(title=title, axes=ax)
+        plt.savefig(self._default_file_path_name + title.strip().lower())
+        return ax
 
     @staticmethod
     def __print_step(epoch, batch_step, loss, accuracy):
