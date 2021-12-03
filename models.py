@@ -131,7 +131,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i)) / total_steps, 2)
                 should_print = i % print_every == print_every - 1
                 if should_print:
-                    print(f'Training batch: {i} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
+                    print(f'Training batch: {i + 1} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
                 loss, accuracy = self.__train_batch(batch_loader=batch_loading_function,
                                                             batch_size=batch_size, criterion=criterion)
 

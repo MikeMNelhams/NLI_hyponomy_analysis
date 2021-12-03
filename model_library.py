@@ -30,7 +30,7 @@ def method_print_decorator(func: callable, symbol='-', number_of_symbol_per_line
 
 class EarlyStoppingTraining:
     """ https://clay-atlas.com/us/blog/2021/08/25/pytorch-en-early-stopping/ """
-    modes = ("strict", "moving_average", "none")
+    modes = ("strict", "moving_average", "minimum", "none")
 
     def __init__(self, save_checkpoint: Callable, patience: int = 5, mode: str ="strict"):
         self.step = self.__select_measure(mode)
@@ -56,6 +56,9 @@ class EarlyStoppingTraining:
         if mode == "moving_average":
             return self.__moving_average
 
+        if mode == "minimum":
+            return self.__minimum
+
         if mode == "none":
             return self.__none
 
@@ -63,7 +66,7 @@ class EarlyStoppingTraining:
 
     def __strict(self, loss) -> bool:
         """ loss comparison = previous loss"""
-        if loss > self.loss_comparison:
+        if loss >= self.loss_comparison:
             self.trigger_times += 1
             print('Trigger times:', self.trigger_times)
 
@@ -79,7 +82,7 @@ class EarlyStoppingTraining:
 
     def __moving_average(self, loss) -> bool:
         """ loss comparison = (loss comparison + loss) / 2"""
-        if loss > self.loss_comparison:
+        if loss >= self.loss_comparison:
             self.trigger_times += 1
             print('Trigger times:', self.trigger_times)
 
@@ -90,6 +93,21 @@ class EarlyStoppingTraining:
             self.reset_validation_trigger()
 
         self.loss_comparison = (self.loss_comparison + loss) / 2
+
+        return False
+
+    def __minimum(self, loss) -> bool:
+        """ loss comparison = previous loss"""
+        if loss >= self.loss_comparison:
+            self.trigger_times += 1
+            print('Trigger times:', self.trigger_times)
+
+            if self.trigger_times >= self.patience:
+                print('Training Stopped Early!')
+                return True
+        else:
+            self.reset_validation_trigger()
+            self.loss_comparison = loss
 
         return False
 

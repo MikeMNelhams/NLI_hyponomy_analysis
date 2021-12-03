@@ -36,21 +36,17 @@ def main():
     embed.remove_all_non_unique(word_vectors, train_loader.unique_words)
 
     params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
-                         patience=3, early_stopping_mode="strict")
+                         patience=3, early_stopping_mode="minimum")
 
     mike_net = StaticEntailmentNet(word_vectors, train_loader,
-                                   file_path='data/models/nn/nn_model2.pth',
+                                   file_path='data/models/nn/test_model2.pth',
                                    hyper_parameters=params, classifier_model=NeuralNetwork,
                                    validation_data_loader=validation_loader)
 
     mike_net.count_parameters()
 
-    mike_net.train(epochs=500, batch_size=1920, print_every=1)
+    mike_net.train(epochs=100, batch_size=1920, print_every=1)
 
-    ax1 = mike_net.plot_accuracy(title="Full shallow model accuracy")
-    ax2 = mike_net.plot_loss(title="Full shallow model loss")
-
-    plt.show()
     # mike_net.test(validation_loader)
 
 

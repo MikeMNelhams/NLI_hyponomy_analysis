@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os.path
 import random
+import time
 from collections import Counter
 from collections import OrderedDict
 from itertools import chain
@@ -442,6 +443,7 @@ class SNLI_DataLoader:
         with open(self._file_path, "r") as file:
             batch_range = range(batch_start_index, batch_end_index)
             content = [x for i, x in enumerate(file) if i in batch_range]
+            # content = [x for x in file[batch_start_index:batch_end_index]]
 
         content2 = [json.loads(json_string) for json_string in content]
         del content
@@ -626,9 +628,15 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
             overlap = True
             batch_end_index = self.file_size - 1
 
+        # Makes use of early stopping AND known list memory allocation.
         with open(self.temporary_save_path, "r") as file:
             batch_range = range(batch_start_index, batch_end_index)
-            content = [self.__format_row(x) for i, x in enumerate(file) if i in batch_range]
+            content = [{} for _ in batch_range]
+            for i, x in enumerate(file):
+                if i >= batch_end_index:
+                    break
+                if i >= batch_start_index:
+                    content[i - batch_start_index] = self.__format_row(x)
 
         if len(content) == 0:
             print('BATCH RANGE:', batch_range)
