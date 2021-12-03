@@ -36,10 +36,10 @@ def main():
     embed.remove_all_non_unique(word_vectors, train_loader.unique_words)
 
     params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
-                         patience=3, early_stopping_mode="minimum")
+                         patience=10, early_stopping_mode="minimum")
 
     mike_net = StaticEntailmentNet(word_vectors, train_loader,
-                                   file_path='data/models/nn/test_model2.pth',
+                                   file_path='data/models/nn/nn_model3.pth',
                                    hyper_parameters=params, classifier_model=NeuralNetwork,
                                    validation_data_loader=validation_loader)
 

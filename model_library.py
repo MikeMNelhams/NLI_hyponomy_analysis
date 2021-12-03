@@ -36,7 +36,7 @@ class EarlyStoppingTraining:
         self.step = self.__select_measure(mode)
 
         self.patience = patience
-        self.loss_comparison = 0
+        self.loss_comparison = np.inf
         self.trigger_times = 0
 
         # For saving checkpoints during each __call__
@@ -98,6 +98,7 @@ class EarlyStoppingTraining:
 
     def __minimum(self, loss) -> bool:
         """ loss comparison = previous loss"""
+        print(f'LOSS: {loss}, LC: {self.loss_comparison}')
         if loss >= self.loss_comparison:
             self.trigger_times += 1
             print('Trigger times:', self.trigger_times)
