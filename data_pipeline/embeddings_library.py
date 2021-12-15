@@ -8,6 +8,14 @@ from gensim.scripts.glove2word2vec import glove2word2vec
 import sqlite3
 
 
+# Here is a table of different lookup methods I have tested
+# -----------------------------------------------------------------------------------------------------#
+#    SQLite (Hybrid Disk)               | 120ms - 1000ms QUERY | 002 seconds LOAD | 0   RAM | 6gb disk #
+#    Load from file to RAM              | 100ms - 0200ms QUERY | 180 seconds LOAD | 5gb RAM | 5gb disk #
+#    SQLite to RAM - current solution   | 020ms - 0040ms QUERY | 012 seconds LOAD | 6gb RAM | 6gb disk #
+# -----------------------------------------------------------------------------------------------------#
+
+
 def glove_matrix(input_file_path: str, output_file_path: str):
 
     if not os.path.isfile(output_file_path):

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 import model_library as ml
-from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer
+from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer, HyperParams
 import torch.optim as optim
 
 
@@ -104,16 +104,36 @@ class NeuralNet(unittest.TestCase):
                                        classifier_model=NeuralNetwork, validation_data_loader=self.train_loader)
         mike_net.print_available_devices()
 
-    def test_early_stopping(self):
+    def test_early_stopping_minimum(self):
         train_save_path = 'data/test_data/test_train'
 
         with TestTeardown(train_save_path):
+            params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
+                                 patience=10, early_stopping_mode="minimum")
+
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
-                                           classifier_model=NeuralNetwork, validation_data_loader=self.train_loader)
+                                           classifier_model=NeuralNetwork, validation_data_loader=self.train_loader,
+                                           hyper_parameters=params)
             mike_net.train(500, batch_size=256)
             # Early stopping means must not overfit on validation data.
-            # Model should achieve ~50% on 'strict' early stopping.
-            self.assertLess(mike_net.validation_history.accuracy[-1], 0.8)
+            # The number of epochs should be less than 500.
+            self.assertLess(len(mike_net.validation_history.accuracy), 500)
+            self.assertGreater(mike_net.validation_history.accuracy[-1], 0.3)
+
+    def test_early_stopping_strict(self):
+        train_save_path = 'data/test_data/test_train'
+
+        with TestTeardown(train_save_path):
+            params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
+                                 patience=10, early_stopping_mode="minimum")
+
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           classifier_model=NeuralNetwork, validation_data_loader=self.train_loader,
+                                           hyper_parameters=params)
+            mike_net.train(500, batch_size=256)
+            # Early stopping means must not overfit on validation data.
+            # Strict early stopping should stop less than ~300
+            self.assertLess(len(mike_net.validation_history.accuracy), 300)
             self.assertGreater(mike_net.validation_history.accuracy[-1], 0.3)
 
 
@@ -175,7 +195,8 @@ class Transformer(unittest.TestCase):
         train_save_path = 'data/test_data/test_train5'
 
         with TestTeardown(train_save_path):
-            params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+            params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
+                                 patience=3)
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params,
                                            classifier_model=EntailmentTransformer,

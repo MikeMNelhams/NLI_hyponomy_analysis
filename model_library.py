@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from prettytable import PrettyTable
 
-from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, JSON_writer
+from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, DictWriter
 from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension
 
 from sklearn.metrics import confusion_matrix, accuracy_score
@@ -32,7 +32,7 @@ class EarlyStoppingTraining:
     """ https://clay-atlas.com/us/blog/2021/08/25/pytorch-en-early-stopping/ """
     modes = ("strict", "moving_average", "minimum", "none")
 
-    def __init__(self, save_checkpoint: Callable, patience: int = 5, mode: str ="strict"):
+    def __init__(self, save_checkpoint: Callable, patience: int = 5, mode: str ="minimum"):
         self.step = self.__select_measure(mode)
 
         self.patience = patience
@@ -62,7 +62,7 @@ class EarlyStoppingTraining:
         if mode == "none":
             return self.__none
 
-        return self.__strict
+        return self.__minimum
 
     def __strict(self, loss) -> bool:
         """ loss comparison = previous loss"""
@@ -356,12 +356,13 @@ class History:
         return ax
 
 
-class AdditionalInformation(JSON_writer):
+class AdditionalInformation:
     def __init__(self, file_path: str):
-        super(AdditionalInformation, self).__init__(file_path)
         self.file_path = file_path
 
         self.data = {'total_runtime': 0}
+
+        self.__dict_writer = DictWriter(self.file_path)
 
     def add_runtime(self, runtime: float):
         self.data['total_runtime'] += runtime
@@ -372,6 +373,10 @@ class AdditionalInformation(JSON_writer):
     @property
     def runtime(self):
         return self.data['total_runtime']
+
+    def save(self) -> None:
+        self.__dict_writer.save(self.data)
+        return None
 
 
 class EntailmentSelfAttention(nn.Module):
@@ -574,10 +579,6 @@ class AbstractClassifierModel(ABC):
     def test(self, test_data_loader,
              test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
         raise NotImplementedError
-
-    # def track_metrics(self, *metric_names) -> None:
-    #     self.metric_evaluator = MetricEvaluator(metric_names)
-    #     return None
 
     def count_parameters(self):
         table = PrettyTable(["Modules", "Parameters"])

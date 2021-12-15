@@ -1,13 +1,12 @@
-import json
 import os
-import pickle
 import random
 from warnings import warn
+from typing import Dict
 
 import numpy as np
 from nltk.corpus import wordnet as wn
 
-import file_operations
+from file_operations import DictWriter, list_files_in_directory
 
 
 class KS:
@@ -42,78 +41,18 @@ class KS:
         return vocab
 
 
-class Hyponyms:
+class Hyponyms(DictWriter):
     def __init__(self, hyponyms_file_path: str):
-        self.__hyponyms_file_path = hyponyms_file_path
+        super(Hyponyms, self).__init__(hyponyms_file_path)
 
-        self.hyponyms = None
         if not self.file_exists or self.file_empty:
             self.hyponyms = self.generate_hyponyms()
-            self.__save_hyponyms(self.hyponyms_file_path)
+            self.save(data=self.hyponyms)
         else:
-            self.hyponyms = self.__load_hyponyms(self.hyponyms_file_path)
-
-    @property
-    def hyponyms_file_path(self):
-        return self.__hyponyms_file_path
-
-    @property
-    def file_exists(self):
-        return os.path.isfile(self.hyponyms_file_path)
-
-    @property
-    def file_empty(self):
-        return self.file_exists and os.stat(self.hyponyms_file_path).st_size == 0
-
-    def __load_hyponyms(self, file_path: str) -> dict:
-        if file_operations.is_file(file_path, '.p'):
-            return self.__load_hyponyms_from_pickle()
-        if file_operations.is_file(file_path, '.json'):
-            return self.__load_hyponyms_from_JSON()
-
-        raise file_operations.InvalidPathError
-
-    def __save_hyponyms(self, file_path: str) -> None:
-        if file_operations.is_file(file_path, '.p'):
-            self.__save_hyponyms_to_pickle()
-        if file_operations.is_file(file_path, '.json'):
-            self.__save_hyponyms_to_JSON()
-
-        raise file_operations.InvalidPathError
-
-    def __load_hyponyms_from_pickle(self) -> dict:
-        print("Loading hyponyms dictionary..")
-        with open(self.hyponyms_file_path, 'rb') as hyp_file:
-            loaded_hyponyms: dict = pickle.load(hyp_file)
-        print("Finished loading hyponyms dictionary")
-        print('-' * 50)
-        return loaded_hyponyms
-
-    def __load_hyponyms_from_JSON(self) -> dict:
-        print("Loading dictionary of hyponyms from JSON...")
-        with open(self.hyponyms_file_path, "r") as infile:
-            hyponyms: dict = json.load(infile)
-        print("Done loading dictionary of hyponyms from JSON")
-        print('-' * 50)
-        return hyponyms
-
-    def __save_hyponyms_to_pickle(self) -> None:
-        print("Pickling out dictionary of hyponyms...")
-        with open(self.hyponyms_file_path, "wb") as outfile:
-            pickle.dump(self.hyponyms, outfile)
-        print("Done pickling dictionary of hyponyms.")
-        print('-' * 50)
-        return None
-
-    def __save_hyponyms_to_JSON(self) -> None:
-        print("Saving dictionary of hyponyms to JSON...")
-        with open(self.hyponyms_file_path, "w") as outfile:
-            json.dump(self.hyponyms, outfile)
-        print("Done saving dictionary of hyponyms to JSON")
-        print('-' * 50)
+            self.hyponyms = self.load()
 
     def generate_hyponyms(self, phrase_pair_directory: str = 'data/KS2016/'):
-        phrases_file_names = file_operations.list_files_in_directory(phrase_pair_directory, extension_type='.txt')
+        phrases_file_names = list_files_in_directory(phrase_pair_directory, extension_type='.txt')
 
         words = []
         for phrase_pair_file_name in phrases_file_names:
@@ -153,7 +92,7 @@ class Hyponyms:
 
     def vectors(self, glove_vector_file_path: str, normalisation=False, weights=False, header=False,
                 vector_encoding: str='utf8') -> dict:
-        assert os.path.isfile(glove_vector_file_path)
+        assert os.path.isfile(glove_vector_file_path), FileNotFoundError(glove_vector_file_path)
         print("Generating vectors for each hyponym from vectors file")
         if weights:
             vocabulary = set((hyp[0] for word in self.hyponyms
@@ -179,18 +118,20 @@ class Hyponyms:
         return hypo_vectors
 
 
-class DenseHyponymMatrices:
+class DenseHyponymMatrices(DictWriter):
     def __init__(self, hyponyms: Hyponyms, hyponym_vectors: dict, density_matrices_file_path: str, normalisation=False):
+        super(DenseHyponymMatrices, self).__init__(density_matrices_file_path)
         self.__density_matrices_file_path = density_matrices_file_path
         self.normalisation = normalisation
 
         self.density_matrices = None
+
         if not self.file_exists or self.file_empty:
             self.density_matrices = self.__density_matrices(hyponyms.hyponyms,
                                                                      hyponym_vectors)
-            self.__save_density_matrices_to_pickle()
+            self.save(self.density_matrices)
         else:
-            self.density_matrices = self.__load_density_matrices_from_pickle()
+            self.density_matrices = self.load()
 
     def __len__(self):
         return len(self.density_matrices)
@@ -207,7 +148,7 @@ class DenseHyponymMatrices:
     def file_empty(self):
         return self.file_exists and os.stat(self.density_matrices_file_path).st_size == 0
 
-    def __density_matrices(self, hyp_dict: dict, hypo_vectors: dict):
+    def __density_matrices(self, hyp_dict: dict, hypo_vectors: dict) -> Dict[str, np.array]:
         dim = len(random.choice(list(hypo_vectors.values())))  # dim= length of arbitrary vector, all same
         vocab = list(hyp_dict.keys())
         vectors = {word: np.zeros([dim, dim]) for word in vocab}
@@ -246,38 +187,18 @@ class DenseHyponymMatrices:
         print('-' * 50)
         return vectors
 
-    def __save_density_matrices_to_pickle(self):
-        print("Pickling density matrices")
-        with open(self.density_matrices_file_path, "wb") as dm_file:
-            pickle.dump(self.density_matrices, dm_file)
-        print("Done.")
-        print('-' * 50)
-
-    def __load_density_matrices_from_pickle(self) -> dict:
-        print("Loading density matrices...")
-        with open(self.density_matrices_file_path, 'rb') as dm_file:
-            loaded_density_matrices: dict = pickle.load(dm_file)
-        print("Finished loading density matrices")
-        print('-' * 50)
-        return loaded_density_matrices
-
 
 def main():
     hyponyms_all = Hyponyms('../data/hyponyms/all_hyponyms.json')
-    vectors = hyponyms_all.vectors('data/embedding_data/glove/glove.42B.300d.txt')
-    print(vectors['a'])
+    vectors = hyponyms_all.vectors('../data/embedding_data/glove/glove.42B.300d.txt')
     density_matrices = DenseHyponymMatrices(hyponyms_all, vectors,
-                                            density_matrices_file_path="../data/hyponyms/dm-50d-glove-wn.p")
+                                            density_matrices_file_path="../data/hyponyms/dm-50d-glove-wn.json")
 
     print("We built {0} density matrices".format(len(density_matrices)))
 
     print('-' * 50)
 
-    print(density_matrices.density_matrices['member'].shape)
-
-    print('-' * 100)
-    print()
-    print('-' * 100)
+    print('~'*80, "\nDensity matrices:", density_matrices.density_matrices, '\n', '~'*80)
 
 
 if __name__ == "__main__":
