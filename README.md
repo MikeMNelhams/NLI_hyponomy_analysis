@@ -10,6 +10,8 @@ http://nlp.stanford.edu/pubs/snli_paper.pdf
 
 For more information about the report, access the Interim Report. 
 
-![Interim Report preview](https://github.com/MikeMNelhams/NLI_hyponymy_analysis/blob/Interim_Report-1.jpg?raw=true)
+![Interim Report preview](https://github.com/MikeMNelhams/NLI_hyponymy_analysis/blob/main/Interim_Report-1.jpg?raw=true)
+
+
 
 ## Many thanks to **Dr. Martha Lewis**, the supervisor for the project
