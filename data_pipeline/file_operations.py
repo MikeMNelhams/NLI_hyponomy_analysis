@@ -36,6 +36,7 @@ def file_path_extension(file_path: str) -> str:
 
 
 def is_file(file_path: str, extension: str) -> bool:
+    """ Assumes that the file exists """
     if not os.path.isfile(file_path):
         return False
     if len(file_path) < 3:
@@ -99,20 +100,21 @@ class DictWriter:
 
     @load_print_decorator
     def load(self) -> dict:
-        if is_file(self.file_path, '.p'):
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".p":
             return self.__load_pickle()
-        if is_file(self.file_path, '.json'):
+        if file_extension == ".json":
             return self.__load_json()
         raise InvalidPathError
 
     @save_print_decorator
     def save(self, data: dict) -> None:
         assert type(data) == dict, TypeError
-        print(f"Saving to file: {self.file_path}")
-        if is_file(self.file_path, '.p'):
-            self.__save_pickle(data)
-        if is_file(self.file_path, '.json'):
-            self.__save_json(data)
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".p":
+            return self.__save_pickle(data)
+        if file_extension == ".json":
+            return self.__save_json(data)
         print(f"Finished saving to file: {self.file_path}")
         return None
 

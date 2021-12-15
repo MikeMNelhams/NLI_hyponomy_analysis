@@ -47,7 +47,8 @@ class Hyponyms(DictWriter):
 
         if not self.file_exists or self.file_empty:
             self.hyponyms = self.generate_hyponyms()
-            self.save(data=self.hyponyms)
+
+            self.save(self.hyponyms)
         else:
             self.hyponyms = self.load()
 
@@ -90,8 +91,23 @@ class Hyponyms(DictWriter):
                 hyponyms[word] = 'OOV'
         return hyponyms
 
-    def vectors(self, glove_vector_file_path: str, normalisation=False, weights=False, header=False,
-                vector_encoding: str='utf8') -> dict:
+
+class GloveVectors(DictWriter):
+    def __init__(self, save_path: str, glove_vector_file_path: str, hyponyms: dict):
+        super(GloveVectors, self).__init__(save_path)
+
+        self.hyponyms = hyponyms
+
+        if not self.file_exists or self.file_empty:
+            self.vectors = self.__vectors(glove_vector_file_path)
+            data_to_save = {key: value.tolist() for key, value in self.vectors.items()}
+            self.save(data_to_save)
+        else:
+            self.vectors = self.load()
+            self.vectors = {key: np.array(value) for key, value in self.vectors.items()}
+
+    def __vectors(self, glove_vector_file_path: str, normalisation=False, weights=False, header=False,
+                  vector_encoding: str='utf8') -> dict:
         assert os.path.isfile(glove_vector_file_path), FileNotFoundError(glove_vector_file_path)
         print("Generating vectors for each hyponym from vectors file")
         if weights:
@@ -119,7 +135,9 @@ class Hyponyms(DictWriter):
 
 
 class DenseHyponymMatrices(DictWriter):
-    def __init__(self, hyponyms: Hyponyms, hyponym_vectors: dict, density_matrices_file_path: str, normalisation=False):
+    def __init__(self, density_matrices_file_path: str,
+                 hyponyms: Hyponyms = None, hyponym_vectors: dict = None,
+                 normalisation=False):
         super(DenseHyponymMatrices, self).__init__(density_matrices_file_path)
         self.__density_matrices_file_path = density_matrices_file_path
         self.normalisation = normalisation
@@ -127,11 +145,18 @@ class DenseHyponymMatrices(DictWriter):
         self.density_matrices = None
 
         if not self.file_exists or self.file_empty:
+            if hyponyms is None or hyponym_vectors is None:
+                raise TypeError(f"hyponyms and hyponym_vectors cannot be None, "
+                                f"since {self.file_path} does not exist!")
             self.density_matrices = self.__density_matrices(hyponyms.hyponyms,
                                                                      hyponym_vectors)
-            self.save(self.density_matrices)
+
+            data_to_save = {key: value.tolist() for key, value in self.density_matrices.items()}
+            self.save(data_to_save)
+
         else:
             self.density_matrices = self.load()
+            self.density_matrices = {key: np.array(value) for key, value in self.density_matrices.items()}
 
     def __len__(self):
         return len(self.density_matrices)
@@ -190,15 +215,16 @@ class DenseHyponymMatrices(DictWriter):
 
 def main():
     hyponyms_all = Hyponyms('../data/hyponyms/all_hyponyms.json')
-    vectors = hyponyms_all.vectors('../data/embedding_data/glove/glove.42B.300d.txt')
-    density_matrices = DenseHyponymMatrices(hyponyms_all, vectors,
-                                            density_matrices_file_path="../data/hyponyms/dm-50d-glove-wn.json")
+    vectors = GloveVectors('../data/hyponyms/glove_vectors.json',
+                           '../data/embedding_data/glove/glove.42B.300d.txt', hyponyms_all.hyponyms)
+    density_matrices = DenseHyponymMatrices(density_matrices_file_path="../data/hyponyms/dm-50d-glove-wn.json",
+                                            hyponyms=hyponyms_all, hyponym_vectors=vectors.vectors)
 
     print("We built {0} density matrices".format(len(density_matrices)))
 
-    print('-' * 50)
-
-    print('~'*80, "\nDensity matrices:", density_matrices.density_matrices, '\n', '~'*80)
+    # print('-' * 50)
+    #
+    # print('~'*80, "\nDensity matrices:", density_matrices.density_matrices, '\n', '~'*80)
 
 
 if __name__ == "__main__":
