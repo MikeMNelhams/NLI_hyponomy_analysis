@@ -6,7 +6,7 @@ from typing import Dict
 import numpy as np
 from nltk.corpus import wordnet as wn
 
-from file_operations import DictWriter, list_files_in_directory
+from NLI_hyponomy_analysis.data_pipeline.file_operations import DictWriter, list_files_in_directory
 
 
 class KS:
@@ -52,7 +52,7 @@ class Hyponyms(DictWriter):
         else:
             self.hyponyms = self.load()
 
-    def generate_hyponyms(self, phrase_pair_directory: str = 'data/KS2016/'):
+    def generate_hyponyms(self, phrase_pair_directory: str = '../data/KS2016/'):
         phrases_file_names = list_files_in_directory(phrase_pair_directory, extension_type='.txt')
 
         words = []
@@ -158,8 +158,15 @@ class DenseHyponymMatrices(DictWriter):
             self.density_matrices = self.load()
             self.density_matrices = {key: np.array(value) for key, value in self.density_matrices.items()}
 
+        # TODO switch this with using the first key.
+        self.__d_emb = self.density_matrices["exhibition"].shape[0]**2
+
     def __len__(self):
         return len(self.density_matrices)
+
+    @property
+    def d_emb(self):
+        return self.__d_emb
 
     @property
     def density_matrices_file_path(self):
@@ -212,12 +219,24 @@ class DenseHyponymMatrices(DictWriter):
         print('-' * 50)
         return vectors
 
+    def lookup(self, word: str) -> np.array:
+        word = self.density_matrices.get(word, None)
+        return word
+
+    def remove_words(self, words: list) -> None:
+        self.density_matrices = {key: value for key, value in self.density_matrices.items() if key not in words}
+        return None
+
+    def flatten(self) -> None:
+        self.density_matrices = {key: value.flatten() for key, value in self.density_matrices.items()}
+        return None
+
 
 def main():
-    hyponyms_all = Hyponyms('../data/hyponyms/all_hyponyms.json')
-    vectors = GloveVectors('../data/hyponyms/glove_vectors.json',
-                           '../data/embedding_data/glove/glove.42B.300d.txt', hyponyms_all.hyponyms)
-    density_matrices = DenseHyponymMatrices(density_matrices_file_path="../data/hyponyms/dm-50d-glove-wn.json",
+    hyponyms_all = Hyponyms('../data/hyponyms/25d_hyponyms.json')
+    vectors = GloveVectors('../data/hyponyms/25d_glove_vectors.json',
+                           '../data/embedding_data/glove/glove.twitter.27B.25d.txt', hyponyms_all.hyponyms)
+    density_matrices = DenseHyponymMatrices(density_matrices_file_path="../data/hyponyms/dm-25d-glove-wn.json",
                                             hyponyms=hyponyms_all, hyponym_vectors=vectors.vectors)
 
     print("We built {0} density matrices".format(len(density_matrices)))

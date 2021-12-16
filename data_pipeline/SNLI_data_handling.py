@@ -176,7 +176,7 @@ class EntailmentModelBatch:
 
         data_to_process = self.data[:, column_number]
 
-        embed_vector_length = len(list(word_vectors.lookup('the')))
+        embed_vector_length = word_vectors.d_emb
 
         padding_list = [pad_value for _ in range(embed_vector_length)]
 

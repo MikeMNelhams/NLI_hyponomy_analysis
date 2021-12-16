@@ -1,12 +1,11 @@
 import torch.optim as optim
 from dotenv import load_dotenv
 
-import matplotlib.pyplot as plt
-
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
-from data_pipeline.SNLI_data_handling import SNLI_DataLoaderOptimized
+from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoaderOptimized
 from model_library import HyperParams
 from models import NeuralNetwork, StaticEntailmentNet
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
 
 
 def main():
@@ -21,13 +20,16 @@ def main():
 
     train_loader = SNLI_DataLoaderOptimized(train_small_path)
 
-    validation_loader = SNLI_DataLoaderOptimized(validation_path)
+    validation_loader = SNLI_DataLoaderOptimized(validation_small_path)
     # test_loader = SNLI_DataLoaderOptimized(test_path)
 
-    word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
-    word_vectors.load_memory()
+    # word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    # word_vectors.load_memory()
+    # embed.remove_all_non_unique(word_vectors, train_loader.unique_words)
 
-    embed.remove_all_non_unique(word_vectors, train_loader.unique_words)
+    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn.json")
+    word_vectors.remove_words(train_loader.unique_words)
+    word_vectors.flatten()
 
     params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
                          patience=10, early_stopping_mode="minimum")
@@ -39,8 +41,9 @@ def main():
 
     mike_net.count_parameters()
 
-    mike_net.train(epochs=100, batch_size=1920, print_every=1)
-
+    # mike_net.train(epochs=100, batch_size=256, print_every=1)
+    mike_net.plot_loss()
+    mike_net.plot_accuracy()
     # mike_net.test(validation_loader)
 
 
