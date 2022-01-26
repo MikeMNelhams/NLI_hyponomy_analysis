@@ -18,33 +18,35 @@ def main():
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
     validation_small_path = "data/snli_small/snli_small1_dev.jsonl"
 
-    train_loader = SNLI_DataLoaderOptimized(train_small_path)
+    train_loader = SNLI_DataLoaderOptimized(train_path)
 
-    validation_loader = SNLI_DataLoaderOptimized(validation_small_path)
-    # test_loader = SNLI_DataLoaderOptimized(test_path)
+    validation_loader = SNLI_DataLoaderOptimized(validation_path)
+
+    test_loader = SNLI_DataLoaderOptimized(test_path)
 
     # word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     # word_vectors.load_memory()
     # embed.remove_all_non_unique(word_vectors, train_loader.unique_words)
-
-    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn.json")
-    word_vectors.remove_words(train_loader.unique_words)
-    word_vectors.flatten()
-
-    params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
-                         patience=10, early_stopping_mode="minimum")
-
-    mike_net = StaticEntailmentNet(word_vectors, train_loader,
-                                   file_path='data/models/nn/test_small_model5.pth',
-                                   hyper_parameters=params, classifier_model=NeuralNetwork,
-                                   validation_data_loader=validation_loader)
-
-    mike_net.count_parameters()
-
-    # mike_net.train(epochs=100, batch_size=256, print_every=1)
-    mike_net.plot_loss()
-    mike_net.plot_accuracy()
-    # mike_net.test(validation_loader)
+    #
+    # # word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn.json")
+    # # word_vectors.remove_all_except(train_loader.unique_words)
+    # # word_vectors.flatten()
+    # # print(len(word_vectors.density_matrices.values()))
+    #
+    # params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
+    #                      patience=10, early_stopping_mode="minimum")
+    #
+    # mike_net = StaticEntailmentNet(word_vectors, train_loader,
+    #                                file_path='data/models/nn/test_small_model5.pth',
+    #                                hyper_parameters=params, classifier_model=NeuralNetwork,
+    #                                validation_data_loader=validation_loader)
+    #
+    # mike_net.count_parameters()
+    #
+    # mike_net.train(epochs=100, batch_size=1920, print_every=1)
+    # mike_net.plot_loss()
+    # mike_net.plot_accuracy()
+    # # mike_net.test(validation_loader)
 
 
 if __name__ == '__main__':

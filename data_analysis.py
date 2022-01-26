@@ -1,10 +1,12 @@
 import os.path
 
-from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoader
+from NLI_hyponomy_analysis.data_pipeline.SNLI_data_handling import SNLI_DataLoaderOptimized
 from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_without_extension
 
 from NLI_hyponomy_analysis.data_pipeline.word_operations import remove_punctuation
 from NLI_hyponomy_analysis.data_pipeline.word_operations import replace_space_for_underscores, WordParser
+
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -41,7 +43,7 @@ class FrequencyFigureParams(FigureParams):
 class DataAnalysis:
     def __init__(self, file_path: str):
         assert os.path.isfile(file_path)
-        self.__data_loader = SNLI_DataLoader(file_path)
+        self.__data_loader = SNLI_DataLoaderOptimized(file_path)
 
     @property
     def data_loader(self):
@@ -253,6 +255,21 @@ def test_word_frequency_histogram():
     test_loader_analysis.plot_word_histogram("sentence2", dataset_name="test")
 
 
+def percentage_hypernym():
+    train_path = "data/snli_1.0/snli_1.0_train.jsonl"
+    validation_path = "data/snli_1.0/snli_1.0_dev.jsonl"
+    test_path = "data/snli_1.0/snli_1.0_test.jsonl"
+
+    train_small_path = "data/snli_small/snli_small1_train.jsonl"
+    validation_small_path = "data/snli_small/snli_small1_dev.jsonl"
+
+    train_loader = SNLI_DataLoaderOptimized(train_path)
+
+    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn.json")
+
+    train_percent_hypernym = word_vectors.valid_hypernym_percentage(train_loader.unique_words)
+    print(train_percent_hypernym)
+
+
 if __name__ == "__main__":
-    train_label_histogram()
-    validation_label_histogram()
+    percentage_hypernym()

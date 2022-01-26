@@ -219,11 +219,19 @@ class DenseHyponymMatrices(DictWriter):
         print('-' * 50)
         return vectors
 
+    def valid_hypernym_percentage(self, vocabulary_list: list) -> float:
+        input_vocab = set(vocabulary_list)
+        hyponym_vocab = set(self.density_matrices.keys())
+
+        number_of_valid_hypernyms = len(input_vocab & hyponym_vocab)
+
+        return (number_of_valid_hypernyms / len(input_vocab)) * 100
+
     def lookup(self, word: str) -> np.array:
         word = self.density_matrices.get(word, None)
         return word
 
-    def remove_words(self, words: list) -> None:
+    def remove_all_except(self, words: list) -> None:
         self.density_matrices = {key: value for key, value in self.density_matrices.items() if key not in words}
         return None
 

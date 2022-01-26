@@ -2,6 +2,8 @@ import json
 import os
 import pickle
 
+from typing import List
+
 
 class InvalidPathError(Exception):
     """ When a path could never point to a file, e.g missing .extension"""
@@ -37,6 +39,8 @@ def file_path_extension(file_path: str) -> str:
 
 def is_file(file_path: str, extension: str) -> bool:
     """ Assumes that the file exists """
+    if len(file_path) == 0:
+        return False
     if not os.path.isfile(file_path):
         return False
     if len(file_path) < 3:
@@ -46,6 +50,23 @@ def is_file(file_path: str, extension: str) -> bool:
     if file_path[-len(extension):] != extension:
         return False
     return True
+
+
+def is_dir(file_path: str) -> bool:
+    if len(file_path) == 0:
+        return False
+    return os.path.isdir(file_path)
+
+
+def make_dir(file_path: str) -> None:
+    if file_path[-1] != '/':
+        raise InvalidPathError
+    os.mkdir(file_path)
+    return None
+
+
+def dirname(file_path: str) -> str:
+    return os.path.dirname(file_path)
 
 
 def file_path_without_extension(file_path: str) -> str:
@@ -61,6 +82,25 @@ def file_path_without_extension(file_path: str) -> str:
             break
 
     return file_path[:-stop_index]
+
+
+def trim_end_of_file_blank_line(file_path: str) -> None:
+    # TODO speed up by switching to memoryview
+    with open(file_path, 'r') as in_file:
+        data = in_file.read()
+
+    if data[-2:-1] == '\n\n':
+        data = data[:-1]
+
+    with open(file_path, 'w') as out_file:
+        out_file.write(data)
+
+    return None
+
+
+def make_empty_file(file_path: str) -> None:
+    with open(file_path, "w") as outfile:
+        outfile.write('')
 
 
 def load_print_decorator(func: callable) -> callable:
@@ -136,6 +176,72 @@ class DictWriter:
     def __save_json(self, data: dict) -> None:
         with open(self.file_path, 'w') as json_file:
             json.dump(data, json_file)
+        return None
+
+
+class TextLogger:
+    def __init__(self, file_path: str):
+        assert file_path_extension(file_path) == ".txt", InvalidPathError
+        self.file_path = file_path
+
+    @property
+    def file_exists(self):
+        return is_file(self.file_path, '.txt')
+
+    @property
+    def file_empty(self):
+        return self.file_exists and os.stat(self.file_path).st_size == 0
+
+    @load_print_decorator
+    def load(self) -> List[str]:
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".txt":
+            return self.__load_text()
+        raise InvalidPathError
+
+    @load_print_decorator
+    def load_safe(self):
+        if not self.file_exists:
+            return None
+
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".txt":
+            return self.__load_text()
+        raise InvalidPathError
+
+    @save_print_decorator
+    def save(self, data: list) -> None:
+        assert type(data) == list, TypeError
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".txt":
+            self.__save_text(data)
+        print(f"Finished saving to file: {self.file_path}")
+        return None
+
+    def append_lines(self, lines: list) -> None:
+        if not self.file_exists:
+            self.__save_text(lines)
+        else:
+            with open(self.file_path, 'a') as text_file:
+                text_file.writelines('\n'.join(lines))
+                text_file.write('\n')
+
+    def remove_last_line(self) -> None:
+        with open(self.file_path, 'r') as text_file:
+            content = text_file.readlines()
+
+        with open(self.file_path, 'w') as text_file:
+            text_file.writelines(content[:-1])
+
+    def __load_text(self) -> list:
+        with open(self.file_path, "r") as text_file:
+            data = text_file.readlines()
+        return data
+
+    def __save_text(self, lines: list) -> None:
+        with open(self.file_path, "w") as text_file:
+            text_file.writelines('\n'.join(lines))
+            text_file.write('\n')
         return None
 
 

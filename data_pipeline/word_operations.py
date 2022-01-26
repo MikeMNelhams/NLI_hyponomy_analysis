@@ -2,6 +2,7 @@ from typing import Iterable
 from typing import List
 
 import re
+from nltk.stem import WordNetLemmatizer
 
 
 def replace_space_for_underscores(word: str) -> str:
@@ -34,6 +35,13 @@ def count_max_sequence_length(list_of_sentences: List[str]):
     return max(len(row.split()) for row in list_of_sentences)
 
 
+def lemmatise_sentence(sentence: str) -> str:
+    lemmatiser = WordNetLemmatizer()
+    words = sentence.split(' ')
+    words = [lemmatiser.lemmatize(word) for word in words]
+    return ' '.join(words)
+
+
 class WordParser:
     """ A way to combine multiple filters into a callable."""
     def __init__(self, actions: Iterable[callable]):
@@ -48,3 +56,7 @@ class WordParser:
     @staticmethod
     def default_clean() -> "WordParser":
         return WordParser((regex_clean_all_punctuation, str.lower, str.strip))
+
+    @staticmethod
+    def default_lemmatisation() -> "WordParser":
+        return WordParser([lemmatise_sentence])

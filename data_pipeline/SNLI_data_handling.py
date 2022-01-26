@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os.path
 import random
-import time
 from collections import Counter
 from collections import OrderedDict
 from itertools import chain
@@ -17,8 +16,9 @@ from embeddings import GloveEmbedding
 from nltk.tokenize import word_tokenize
 
 import csv
-from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_without_extension
-from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser, count_max_sequence_length
+import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
+import NLI_hyponomy_analysis.data_pipeline.word_operations as word_op
+from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser
 
 
 class BatchSizeTooLargeError(Exception):
@@ -137,13 +137,28 @@ class EntailmentModelBatch:
         return max(len(line.split(self.word_delimiter)) for line in sentence_column)
 
     def clean_data(self, clean_actions: WordParser = None) -> None:
-        # Ternary operator for SPEED and lack of intelliJ errors
         clean = np.vectorize(WordParser.default_clean())
         if clean_actions is not None:
             clean = np.vectorize(clean_actions)
 
         for col_index in range(self.data.shape[1]):
             self.data[:, col_index] = clean(self.data[:, col_index])
+        return None
+
+    def lemmatise_data(self, lemmatise_actions: WordParser = None) -> None:
+        clean = np.vectorize(WordParser.default_lemmatisation())
+        if lemmatise_actions is not None:
+            clean = np.vectorize(lemmatise_actions)
+
+        for col_index in range(self.data.shape[1]):
+            self.data[:, col_index] = clean(self.data[:, col_index])
+        return None
+
+    def append_to_file(self, file_path: str) -> None:
+        with open(file_path, "a", newline='') as out_file:
+            writer = csv.writer(out_file)
+
+            writer.writerows(self.data)
         return None
 
     @staticmethod
@@ -304,16 +319,19 @@ class DictBatch(Batch):
     def count_max_words_for_sentence_field(self, field_name: str) -> int:
         if field_name not in self.sentence_fields:
             raise TypeError
-        return count_max_sequence_length([line[field_name] for line in self.data])
+        return word_op.count_max_sequence_length([line[field_name] for line in self.data])
 
 
 class SNLI_DataLoader:
     modes = ('sequential', "random")
 
     def __init__(self, file_path: str, max_sequence_length=None):
-        self._file_path = file_path
-        self.__file_dir_path = os.path.dirname(file_path)
-        self.__max_len_save_path = file_path_without_extension(self._file_path) + '_max_len.txt'
+        self.file_path = file_path
+        self.file_dir_path = file_op.file_path_without_extension(file_path) + '/'
+        self.unique_words_file_path = self.file_dir_path + "unique.csv"
+        self.__max_len_file_path = self.file_dir_path + 'max_len.txt'
+
+        self.__make_dir()
 
         self.file_size = self.__get_number_lines()
 
@@ -321,10 +339,10 @@ class SNLI_DataLoader:
 
         # TODO allow sentences =/= 2
         self.num_sentences = 2
-
         self.max_words_in_sentence_length = 0
+
         if max_sequence_length is None:
-            if os.path.isfile(self.__max_len_save_path):
+            if os.path.isfile(self.__max_len_file_path):
                 self.max_words_in_sentence_length = self.__load_max_sentence_len()
             else:
                 self.max_words_in_sentence_length = self.__find_max_sentence_len()
@@ -336,6 +354,13 @@ class SNLI_DataLoader:
 
     def __len__(self):
         return self.file_size
+
+    def __make_dir(self) -> None:
+        if file_op.is_dir(self.file_dir_path):
+            return None
+
+        file_op.make_dir(self.file_dir_path)
+        return None
 
     def __find_max_sentence_len(self, batch_size: int=1000) -> int:
         max_len = 0
@@ -354,27 +379,24 @@ class SNLI_DataLoader:
         return max_len
 
     def __save_max_sentence_len(self) -> None:
-        with open(self.__max_len_save_path, 'w') as outfile:
+        with open(self.__max_len_file_path, 'w') as outfile:
             outfile.write(str(self.max_words_in_sentence_length))
 
         return None
 
     def __load_max_sentence_len(self) -> int:
-        with open(self.__max_len_save_path, 'r') as infile:
+        with open(self.__max_len_file_path, 'r') as infile:
             content = infile.read()
         return int(content)
 
     def __initialise_unique_words(self) -> list:
-        file_path = file_path_without_extension(self._file_path) + "_unique.csv"
-        if not os.path.isfile(file_path):
+        if not os.path.isfile(self.unique_words_file_path):
             self.__save_unique_words()
 
         return self.__load_unique_words()
 
     def __save_unique_words(self) -> None:
-        save_file_path = file_path_without_extension(self._file_path) + "_unique.csv"
-
-        with open(save_file_path, "w") as out_file:
+        with open(self.unique_words_file_path, "w") as out_file:
             writer = csv.writer(out_file)
 
             writer.writerow(self.__get_unique_words())
@@ -382,16 +404,14 @@ class SNLI_DataLoader:
         return None
 
     def __load_unique_words(self) -> list:
-        file_path = file_path_without_extension(self._file_path) + "_unique.csv"
-
-        with open(file_path, "r") as in_file:
+        with open(self.unique_words_file_path, "r") as in_file:
             reader = csv.reader(in_file)
             unique_words = list(reader)
         return unique_words[0]
 
     def __get_number_lines(self) -> int:
         """ Run at init"""
-        with open(self._file_path, "r") as file:
+        with open(self.file_path, "r") as file:
             number_of_lines = sum([1 for i, x in enumerate(file) if x[-1] == '\n'])
         return number_of_lines
 
@@ -403,7 +423,7 @@ class SNLI_DataLoader:
         :param line_number: int
         :return: dict
         """
-        with open(self._file_path, "r") as file:
+        with open(self.file_path, "r") as file:
             content = [x for i, x in enumerate(file) if i == line_number]
 
         content = content[0]
@@ -440,7 +460,7 @@ class SNLI_DataLoader:
             overlap = True
             batch_end_index = self.file_size - 1
 
-        with open(self._file_path, "r") as file:
+        with open(self.file_path, "r") as file:
             batch_range = range(batch_start_index, batch_end_index)
             content = [x for i, x in enumerate(file) if i in batch_range]
             # content = [x for x in file[batch_start_index:batch_end_index]]
@@ -467,7 +487,7 @@ class SNLI_DataLoader:
 
         buffer = []
 
-        with open(self._file_path, 'r') as f:
+        with open(self.file_path, 'r') as f:
             for line_num, line in enumerate(f):
                 n = line_num + 1.0
                 r = random.random()
@@ -539,17 +559,27 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
     def __init__(self, file_path: str, max_sequence_length=None, temporary_batch_iterator_size: int=256):
         super().__init__(file_path, max_sequence_length)
         # TODO Fix strange bug where it runs forever if more than one exists?
-        self.temporary_save_path = file_path_without_extension(file_path) + "_clean" + ".csv"
+        self.clean_file_path = self.file_dir_path + "clean.csv"
+        self.lemmatised_file_path = self.file_dir_path + 'clean_lemmatised.csv'
 
-        if not self.is_file:
+        if not self.clean_file_exists:
+            file_op.make_empty_file(self.clean_file_path)
             self.__save_clean_data(temporary_batch_iterator_size=temporary_batch_iterator_size)
+
+        if not self.lemmatised_file_exists:
+            file_op.make_empty_file(self.lemmatised_file_path)
+            self.__save_lemmatised_data(temporary_batch_iterator_size=temporary_batch_iterator_size)
 
         # Mutate the sequential load method after using the temporary file is created
         self._load_batch_sequential = self.__load_batch_sequential_optimal
 
     @property
-    def is_file(self):
-        return os.path.isfile(self.temporary_save_path)
+    def clean_file_exists(self):
+        return os.path.isfile(self.clean_file_path)
+
+    @property
+    def lemmatised_file_exists(self):
+        return os.path.isfile(self.lemmatised_file_path)
 
     @staticmethod
     def __clean_data(data, clean_actions: WordParser = None) -> None:
@@ -563,19 +593,38 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
         return None
 
     def __save_clean_data(self, temporary_batch_iterator_size: int=256) -> None:
-        """ Called once at instantiation. Slow, slow overhead. Reduces load time massively."""
+        """ Called once at first instantiation. Slow, slow overhead. Reduces load time massively."""
 
         batch_sizes = self.__temporary_batch_size_schedule(temporary_batch_iterator_size)
         length = len(self)
+
         # Stops if it has looped across entire dataset.
         for i, batch_size in enumerate(batch_sizes):
             print(f"Saving line ~{i*batch_size} of {length}...")
             data_batch = self._load_batch_sequential(batch_size).to_model_data()
             data_batch.clean_data()
 
-            self.__append_data_batch(data_batch.data)
+            data_batch.append_to_file(self.clean_file_path)
 
-        self.__trim_end_of_file_blank_line(self.temporary_save_path)
+        file_op.trim_end_of_file_blank_line(self.clean_file_path)
+
+        return None
+
+    def __save_lemmatised_data(self, temporary_batch_iterator_size: int = 256) -> None:
+        """ Called once at first instantiation. Slow, slow overhead. Reduces load times massively."""
+
+        batch_sizes = self.__temporary_batch_size_schedule(temporary_batch_iterator_size)
+        length = len(self)
+
+        # Stops if it has looped across the entire dataset
+        for i, batch_size in enumerate(batch_sizes):
+            print(f"Saving line ~{i*batch_size} of {length}...")
+            data_batch = self.__load_batch_sequential_optimal(batch_size).to_model_data()
+            data_batch.lemmatise_data()
+
+            data_batch.append_to_file(self.lemmatised_file_path)
+
+        file_op.trim_end_of_file_blank_line(self.lemmatised_file_path)
 
         return None
 
@@ -591,13 +640,6 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
             batch_sizes.pop()
 
         return batch_sizes
-
-    def __append_data_batch(self, data_batch: np.array) -> None:
-        with open(self.temporary_save_path, "a", newline='') as out_file:
-            writer = csv.writer(out_file)
-
-            writer.writerows(data_batch)
-        return None
 
     def __load_batch_sequential_optimal(self, batch_size: int, from_start: bool = False) -> DictBatch:
         """ Correct way to load data
@@ -629,7 +671,7 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
             batch_end_index = self.file_size - 1
 
         # Makes use of early stopping AND known list memory allocation.
-        with open(self.temporary_save_path, "r") as file:
+        with open(self.clean_file_path, "r") as file:
             batch_range = range(batch_start_index, batch_end_index)
             content = [{} for _ in batch_range]
             for i, x in enumerate(file):
@@ -661,7 +703,7 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
 
         buffer = []
 
-        with open(self._file_path, 'r') as f:
+        with open(self.file_path, 'r') as f:
             for line_num, line in enumerate(f):
                 n = line_num + 1.0
                 r = random.random()
@@ -681,7 +723,7 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
             :param line_number: int
             :return: dict
         """
-        with open(self._file_path, "r") as file:
+        with open(self.file_path, "r") as file:
             content = [self.__format_row(x) for i, x in enumerate(file) if i == line_number]
 
         content = content[0]
@@ -704,20 +746,6 @@ class SNLI_DataLoaderOptimized(SNLI_DataLoader):
             out_row[-1] = out_row[-1][:-1]  # Remove the \n
         out_dict = {"sentence1": out_row[0], "sentence2": out_row[1], "gold_label": out_row[-1]}
         return out_dict
-
-    @staticmethod
-    def __trim_end_of_file_blank_line(file_path: str) -> None:
-        # TODO speed up by switching to memoryview
-        with open(file_path, 'r') as in_file:
-            data = in_file.read()
-
-        if data[-2:-1] == '\n\n':
-            data = data[:-1]
-
-        with open(file_path, 'w') as out_file:
-            out_file.write(data)
-
-        return None
 
 
 if __name__ == "__main__":

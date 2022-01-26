@@ -270,14 +270,14 @@ class StaticEntailmentNet(AbstractClassifierModel):
             self.validation_history.save()
         return None
 
-    def plot_accuracy(self, title='') -> plt.axes:
+    def plot_accuracy(self, title="model accuracy over time") -> plt.axes:
         ax = super().plot_accuracy(title=title)
         ax = self.validation_history.plot_accuracy(title=title, axes=ax)
 
         plt.savefig(self._default_file_path_name + title.strip().lower())
         return ax
 
-    def plot_loss(self, title='') -> plt.axes:
+    def plot_loss(self, title="model loss over time") -> plt.axes:
         ax = super().plot_loss(title=title)
         ax = self.validation_history.plot_loss(title=title, axes=ax)
         plt.savefig(self._default_file_path_name + title.strip().lower())
