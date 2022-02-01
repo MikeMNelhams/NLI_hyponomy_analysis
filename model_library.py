@@ -11,8 +11,9 @@ import torch.nn as nn
 import torch.optim as optim
 from prettytable import PrettyTable
 
-from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_is_of_extension, DictWriter
-from NLI_hyponomy_analysis.data_pipeline.file_operations import is_file, file_path_without_extension
+import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
+
+from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import NLI_DataLoader_abc
 
 from sklearn.metrics import confusion_matrix, accuracy_score
 
@@ -97,7 +98,7 @@ class EarlyStoppingTraining:
         return False
 
     def __minimum(self, loss) -> bool:
-        """ loss comparison = previous loss"""
+        """ loss comparison = global minimum loss"""
         print(f'LOSS: {loss}, LC: {self.loss_comparison}')
         if loss >= self.loss_comparison:
             self.trigger_times += 1
@@ -266,7 +267,7 @@ class History:
         return self.__accuracy
 
     def is_file(self) -> bool:
-        return is_file(self.file_path, '.csv')
+        return file_op.is_file(self.file_path, '.csv')
 
     def assert_not_empty(self) -> None:
         if len(self) == 0:
@@ -306,7 +307,7 @@ class History:
         return None
 
     def load(self) -> None:
-        assert is_file(self.file_path, '.csv'), FileNotFoundError
+        assert file_op.is_file(self.file_path, '.csv'), FileNotFoundError
         print('Loading Model History...')
         data_from_file = pd.read_csv(self.file_path)
         self.__loss = data_from_file['loss'].tolist()
@@ -362,7 +363,7 @@ class AdditionalInformation:
 
         self.data = {'total_runtime': 0}
 
-        self.__dict_writer = DictWriter(self.file_path)
+        self.__dict_writer = file_op.DictWriter(self.file_path)
 
     def add_runtime(self, runtime: float):
         self.data['total_runtime'] += runtime
@@ -523,22 +524,27 @@ class EntailmentEncoder(nn.Module):
 
 class AbstractClassifierModel(ABC):
     """ Handles Model construction, loading, saving internally. You define train, test, validation, predict."""
-    def __init__(self, train_data_loader, file_path: str, classifier_model, embed_size: int, input_shape,
-                 num_classes: int, hyper_parameters: HyperParams = HyperParams()):
+    def __init__(self, train_data_loader: NLI_DataLoader_abc, file_path: str, classifier_model, embed_size: int,
+                 input_shape, num_classes: int,
+                 hyper_parameters: HyperParams = HyperParams()):
         # Essential objects
         self.data_loader = train_data_loader
         self.hyper_parameters = hyper_parameters
 
-        # File I/O
-        assert file_path_is_of_extension(file_path, '.pth'), FileNotFoundError
-        self.file_path = file_path
-
         self.metric_evaluator = None
 
-        self.history_file_path = self._default_file_path_name + '_history.csv'
+        # File I/O
+        assert file_op.file_path_is_of_extension(file_path, '.pth'), FileNotFoundError
+
+        self._file_dir_path = file_op.file_path_without_extension(file_path) + '/'
+        self.model_save_path = self._file_dir_path + 'model.pth'
+
+        self.__make_dir()
+
+        self.history_file_path = self._file_dir_path + 'history.csv'
         self.history = History(self.history_file_path, label="Training")  # For recording information
 
-        self.info_file_path = self._default_file_path_name + '_info.json'
+        self.info_file_path = self._file_dir_path + 'info.json'
         self.info = AdditionalInformation(self.info_file_path)
 
         # Model shape // Input shape
@@ -554,6 +560,13 @@ class AbstractClassifierModel(ABC):
         self.model = None
         self.optimizer = hyper_parameters.optimizer
         self._construct_model(classifier_model=classifier_model)
+
+    def __make_dir(self) -> None:
+        if file_op.is_dir(self._file_dir_path):
+            return None
+
+        file_op.make_dir(self._file_dir_path)
+        return None
 
     def _construct_model(self, classifier_model: Callable) -> None:
         if self.is_file:
@@ -576,7 +589,7 @@ class AbstractClassifierModel(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def test(self, test_data_loader,
+    def test(self, test_data_loader: NLI_DataLoader_abc,
              test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
         raise NotImplementedError
 
@@ -599,7 +612,7 @@ class AbstractClassifierModel(ABC):
         print('Loading model...')
         if not self.is_file:
             raise FileNotFoundError
-        self.model = torch.load(self.file_path)
+        self.model = torch.load(self.model_save_path)
         print('Model loaded!')
         return None
 
@@ -610,7 +623,7 @@ class AbstractClassifierModel(ABC):
 
     def save_checkpoint(self) -> None:
         print('\033[96mSaving model checkpoint...\033[0m')  # CYAN TEXT
-        torch.save(self.model, self.file_path)
+        torch.save(self.model, self.model_save_path)
         return None
 
     def save_model_training(self) -> None:
@@ -643,7 +656,7 @@ class AbstractClassifierModel(ABC):
 
     @property
     def is_file(self) -> bool:
-        return os.path.isfile(self.file_path)
+        return os.path.isfile(self.model_save_path)
 
     @staticmethod
     @method_print_decorator
@@ -655,17 +668,9 @@ class AbstractClassifierModel(ABC):
             print('Device Name:', torch.cuda.get_device_name(device_idx))
         return None
 
-    @property
-    def _default_file_path_name(self):
-        return file_path_without_extension(self.file_path)
-
     @staticmethod
     def _minibatch_predictions(x: torch.Tensor) -> torch.Tensor:
         return torch.argmax(x, dim=1)
-
-    # @property
-    # def is_tracking_metrics(self):
-    #     return self.metric_evaluator is not None
 
 
 def main():

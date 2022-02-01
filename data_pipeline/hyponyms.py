@@ -8,6 +8,9 @@ from nltk.corpus import wordnet as wn
 
 from NLI_hyponomy_analysis.data_pipeline.file_operations import DictWriter, list_files_in_directory
 
+from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed, SNLI_DataLoader_Unclean
+from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Processed
+
 
 class KS:
     def __init__(self, ks_file_path: str):
@@ -42,26 +45,15 @@ class KS:
 
 
 class Hyponyms(DictWriter):
-    def __init__(self, hyponyms_file_path: str):
+    def __init__(self, hyponyms_file_path: str, unique_words: list):
         super(Hyponyms, self).__init__(hyponyms_file_path)
 
         if not self.file_exists or self.file_empty:
-            self.hyponyms = self.generate_hyponyms()
+            self.hyponyms = self.__hyponyms_from_words(unique_words)
 
             self.save(self.hyponyms)
         else:
             self.hyponyms = self.load()
-
-    def generate_hyponyms(self, phrase_pair_directory: str = '../data/KS2016/'):
-        phrases_file_names = list_files_in_directory(phrase_pair_directory, extension_type='.txt')
-
-        words = []
-        for phrase_pair_file_name in phrases_file_names:
-            phrase_pair_file_path = phrase_pair_directory + phrase_pair_file_name
-            phrase_pairs = KS(phrase_pair_file_path)
-            words += phrase_pairs.words
-
-        return self.__hyponyms_from_words(words)
 
     @staticmethod
     def __hyponyms_from_words(word_list, pos=None, depth=10):
@@ -151,15 +143,22 @@ class DenseHyponymMatrices(DictWriter):
             self.density_matrices = self.__density_matrices(hyponyms.hyponyms,
                                                                      hyponym_vectors)
 
-            data_to_save = {key: value.tolist() for key, value in self.density_matrices.items()}
+            def to_list(key, value):
+                try:
+                    return value.tolist()
+                except:
+                    print(key)
+                    print(value)
+                    raise ZeroDivisionError
+
+            data_to_save = {key: to_list(key, value) for key, value in self.density_matrices.items() if type(value) != str}
             self.save(data_to_save)
 
         else:
             self.density_matrices = self.load()
             self.density_matrices = {key: np.array(value) for key, value in self.density_matrices.items()}
 
-        # TODO switch this with using the first key.
-        self.__d_emb = self.density_matrices["exhibition"].shape[0]**2
+        self.__d_emb = list(self.density_matrices.values())[0].shape[0]**2
 
     def __len__(self):
         return len(self.density_matrices)
@@ -241,10 +240,12 @@ class DenseHyponymMatrices(DictWriter):
 
 
 def main():
-    hyponyms_all = Hyponyms('../data/hyponyms/25d_hyponyms.json')
+    validation_loader = SNLI_DataLoader_Unclean(r"Q:\Michael'sStuff\EngMaths\Year4\TechnicalProject\NLI_hyponomy_analysis\data\snli_1.0\snli_1.0_train.jsonl")
+
+    hyponyms_all = Hyponyms('../data/hyponyms/25d_hyponyms_train_unclean.json', validation_loader.unique_words)
     vectors = GloveVectors('../data/hyponyms/25d_glove_vectors.json',
                            '../data/embedding_data/glove/glove.twitter.27B.25d.txt', hyponyms_all.hyponyms)
-    density_matrices = DenseHyponymMatrices(density_matrices_file_path="../data/hyponyms/dm-25d-glove-wn.json",
+    density_matrices = DenseHyponymMatrices(density_matrices_file_path="../data/hyponyms/dm-25d-glove-wn_train_unclean.json",
                                             hyponyms=hyponyms_all, hyponym_vectors=vectors.vectors)
 
     print("We built {0} density matrices".format(len(density_matrices)))

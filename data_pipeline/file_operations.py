@@ -101,6 +101,14 @@ def trim_end_of_file_blank_line(file_path: str) -> None:
 def make_empty_file(file_path: str) -> None:
     with open(file_path, "w") as outfile:
         outfile.write('')
+    return None
+
+
+def make_empty_file_safe(file_path: str) -> None:
+    if os.path.isfile(file_path):
+        raise FileExistsError
+    make_empty_file(file_path)
+    return None
 
 
 def load_print_decorator(func: callable) -> callable:
@@ -179,6 +187,51 @@ class DictWriter:
         return None
 
 
+class TextWriterSingleLine:
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+
+    @property
+    def file_exists(self):
+        return is_file(self.file_path, '.txt')
+
+    @property
+    def file_empty(self):
+        return self.file_exists and os.stat(self.file_path).st_size == 0
+
+    @load_print_decorator
+    def load(self) -> str:
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".txt":
+            return self.__load_text()
+        raise InvalidPathError
+
+    @load_print_decorator
+    def load_safe(self):
+        if not self.file_exists:
+            return None
+
+        return self.load()
+
+    @save_print_decorator
+    def save(self, data: str) -> None:
+        assert hasattr(data, "__repr__")
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".txt":
+            self.__save_text(str(data))
+        return None
+
+    def __load_text(self) -> str:
+        with open(self.file_path, "r") as text_file:
+            data = text_file.read()
+        return data
+
+    def __save_text(self, data) -> None:
+        with open(self.file_path, "w") as text_file:
+            text_file.write(data)
+        return None
+
+
 class TextLogger:
     def __init__(self, file_path: str):
         assert file_path_extension(file_path) == ".txt", InvalidPathError
@@ -204,10 +257,7 @@ class TextLogger:
         if not self.file_exists:
             return None
 
-        file_extension = file_path_extension(self.file_path)
-        if file_extension == ".txt":
-            return self.__load_text()
-        raise InvalidPathError
+        return self.load()
 
     @save_print_decorator
     def save(self, data: list) -> None:
@@ -215,7 +265,6 @@ class TextLogger:
         file_extension = file_path_extension(self.file_path)
         if file_extension == ".txt":
             self.__save_text(data)
-        print(f"Finished saving to file: {self.file_path}")
         return None
 
     def append_lines(self, lines: list) -> None:
@@ -225,6 +274,7 @@ class TextLogger:
             with open(self.file_path, 'a') as text_file:
                 text_file.writelines('\n'.join(lines))
                 text_file.write('\n')
+        return None
 
     def remove_last_line(self) -> None:
         with open(self.file_path, 'r') as text_file:

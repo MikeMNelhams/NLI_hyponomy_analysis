@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from model_errors import ModelAlreadyTrainedError, ModelIsNotValidatingError
 from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History, EarlyStoppingTraining
 
+from data_pipeline.NLI_data_handling import NLI_DataLoader_abc
+
 
 class NeuralNetwork(nn.Module):
     def __init__(self, data_shape, max_seq_len: int, number_of_output_classes=3,
@@ -74,19 +76,20 @@ class EntailmentTransformer(nn.Module):
 class StaticEntailmentNet(AbstractClassifierModel):
     batch_load_configs = ("sequential", "random")
 
-    def __init__(self, word_vectors, train_data_loader, file_path: str,
+    def __init__(self, word_vectors, train_data_loader: NLI_DataLoader_abc, file_path: str,
                  hyper_parameters: HyperParams = HyperParams(), classifier_model=EntailmentTransformer,
-                 validation_data_loader=None):
+                 validation_data_loader: NLI_DataLoader_abc=None):
 
         model_is_validating = validation_data_loader is not None
-        max_length = train_data_loader.max_words_in_sentence_length
-
-        if model_is_validating:
-            max_length = max(max_length, validation_data_loader.max_words_in_sentence_length)
 
         embed_size = word_vectors.d_emb
         # TODO make this dynamic based on data loader.
         num_classes = 4  # 0, 1, 2, 3. Entailment, Neutral, Contradiction, -
+
+        max_length = train_data_loader.max_words_in_sentence_length
+
+        if model_is_validating:
+            max_length = max(max_length, validation_data_loader.max_words_in_sentence_length)
 
         input_shape = (train_data_loader.num_sentences, max_length, embed_size)
 
@@ -100,13 +103,12 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
         # Model structure
         self.num_sentences = train_data_loader.num_sentences
-        self.max_length = max_length
 
         # Validation
         self.model_is_validating = model_is_validating
         if self.model_is_validating:
             self.__validation_data_loader = validation_data_loader
-            self.__validation_save_path = self._default_file_path_name + '_validation_history.csv'
+            self.__validation_save_path = self._file_dir_path + 'validation_history.csv'
             self.validation_history = History(self.__validation_save_path, label="Validation")
             self.early_stopping = EarlyStoppingTraining(save_checkpoint=self.save_checkpoint,
                                                         patience=self.hyper_parameters.patience,
@@ -116,10 +118,11 @@ class StaticEntailmentNet(AbstractClassifierModel):
               print_every: int = 1):
         training_start_time = time.perf_counter()
 
-        batch_loading_function = self.__load_clean_batch(batch_loading_mode)
+        def batch_loader(x):
+            return self.data_loader.load_batch(x, mode=batch_loading_mode)
 
         if self.is_file:
-            raise ModelAlreadyTrainedError(self.file_path)
+            raise ModelAlreadyTrainedError(self.model_save_path)
 
         number_of_iterations_per_epoch = self._number_of_iterations_per_epoch(batch_size=batch_size)
 
@@ -132,7 +135,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 should_print = i % print_every == print_every - 1
                 if should_print:
                     print(f'Training batch: {i + 1} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
-                loss, accuracy = self.__train_batch(batch_loader=batch_loading_function,
+                loss, accuracy = self.__train_batch(batch_loader=batch_loader,
                                                             batch_size=batch_size, criterion=criterion)
 
                 # print statistics
@@ -173,7 +176,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
         valid_batch_size = min(len(self.data_loader), batch_size)
 
-        batch = batch_loader(valid_batch_size)
+        batch = batch_loader(valid_batch_size).to_model_data()
 
         inputs, masks = batch.to_tensors(self.word_vectors, pad_value=-1e-20, max_length=self.max_length)
         labels = batch.labels_encoding
@@ -233,7 +236,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         number_guessed_correctly = 0
         loss = 0
         for i in range(number_of_test_iterations):
-            test_data = test_data_loader.load_clean_batch_sequential(batch_size=max_batch_size)
+            test_data = test_data_loader.load_sequential(batch_size=max_batch_size).to_model_data()
             lines, masks = test_data.to_tensors(self.word_vectors, pad_value=1e-20, max_length=self.max_length)
             labels = test_data.labels_encoding
 
@@ -272,15 +275,20 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
     def plot_accuracy(self, title="model accuracy over time") -> plt.axes:
         ax = super().plot_accuracy(title=title)
-        ax = self.validation_history.plot_accuracy(title=title, axes=ax)
-
-        plt.savefig(self._default_file_path_name + title.strip().lower())
+        try:
+            ax = self.validation_history.plot_accuracy(title=title, axes=ax)
+        except AttributeError:
+            pass
+        plt.savefig(self._file_dir_path + title.strip().lower())
         return ax
 
     def plot_loss(self, title="model loss over time") -> plt.axes:
         ax = super().plot_loss(title=title)
-        ax = self.validation_history.plot_loss(title=title, axes=ax)
-        plt.savefig(self._default_file_path_name + title.strip().lower())
+        try:
+            ax = self.validation_history.plot_loss(title=title, axes=ax)
+        except AttributeError:
+            pass
+        plt.savefig(self._file_dir_path + title.strip().lower())
         return ax
 
     @staticmethod
@@ -294,16 +302,3 @@ class StaticEntailmentNet(AbstractClassifierModel):
         error_message = f"Invalid batch load config: {config}. Try one of {valid_configs}"
         assert config in valid_configs, Exception(error_message)
         return None
-
-    def __load_clean_batch(self, batch_load_config="random"):
-        self.__assert_valid_batch_load_config(batch_load_config)
-
-        if batch_load_config == "random":
-            return self.data_loader.load_clean_batch_random
-
-        if batch_load_config == "sequential":
-            return self.data_loader.load_clean_batch_sequential
-
-        # If a batch load config is given that is somehow valid:
-        #  -> it must not be implemented.
-        raise NotImplementedError
