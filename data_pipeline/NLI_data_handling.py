@@ -195,6 +195,7 @@ class EntailmentModelBatch:
     def to_tensors(self, word_vectors: GloveEmbedding, pad_value=0, max_length=None):
         # Make empty lists
         sentences = [None for _ in range(self.data.shape[1] - 1)]
+
         masks = sentences.copy()
 
         # Fetch all the tensor info for each batch of sentences.
@@ -224,20 +225,24 @@ class EntailmentModelBatch:
             unknown_word_vector = padding_list
 
         def get_vector(word: Any) -> list:
-            if word == 0:
-                return padding_list
-            word_vector = word_vectors.lookup(word)
-            # Lookup returns UNK/PAD if word is OOV
-            if word_vector is None:
-                return unknown_word_vector
-            return word_vector
+            try:
+                if word == 0:
+                    return padding_list
+                word_vector = word_vectors.lookup(word)
+                # Lookup returns UNK/PAD if word is OOV
+                if word_vector is None:
+                    return list(unknown_word_vector)
+            except ValueError:
+                print("word:", word)
+                raise ValueError
+            return list(word_vector)
 
         def pad_row(row: str, __pad_value=pad_value) -> List:
-            return self.pad(row.split(), self.__max_sequence_len, pad_value=__pad_value)
+            padded = self.pad(row.split(), self.__max_sequence_len, pad_value=__pad_value)
+            return padded
 
-        padded_tensor = torch.tensor([[get_vector(word)
-                                       for word in pad_row(row)]
-                                     for row in data_to_process], dtype=torch.float32)
+        padded_tensor = torch.tensor(np.array([[get_vector(word) for word in pad_row(row)]
+                                     for row in data_to_process]), dtype=torch.float32)
 
         padding_mask_tensor = torch.tensor([[1 if word != 0 else 0
                                             for word in pad_row(row, 0)]

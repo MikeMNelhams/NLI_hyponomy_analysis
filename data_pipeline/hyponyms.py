@@ -238,6 +238,31 @@ class DenseHyponymMatrices(DictWriter):
         self.density_matrices = {key: value.flatten() for key, value in self.density_matrices.items()}
         return None
 
+    def generate_missing_vectors(self, words: list, glove_vectors, pad_value=0):
+        padding_vector = np.array([pad_value for _ in range(self.d_emb)])
+
+        def get_vector(word: str) -> np.array:
+            value = self.lookup(word)
+
+            if value is not None:
+                return np.outer(value, value).flatten()
+
+            value = glove_vectors.lookup(word)
+            # Lookup returns UNK/PAD if word is OOV
+            if value is None:
+                return padding_vector
+
+            try:
+                value = np.outer(value, value).flatten()
+            except TypeError:
+                print(f"Word {word}")
+                raise TypeError
+            return value
+
+        self.density_matrices = {key: get_vector(key) for key in words}
+
+        return None
+
 
 def main():
     validation_loader = SNLI_DataLoader_Unclean(r"Q:\Michael'sStuff\EngMaths\Year4\TechnicalProject\NLI_hyponomy_analysis\data\snli_1.0\snli_1.0_train.jsonl")
