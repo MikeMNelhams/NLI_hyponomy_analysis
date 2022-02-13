@@ -417,6 +417,8 @@ class NLI_DataLoader_abc(ABC):
         self.unique_words_file_path = self.file_dir_path + "unique.csv"
         self.max_len_file_path = self.file_dir_path + 'max_len.txt'
 
+        self.file_load_path = file_path
+
         self.max_words_in_sentence_length = 0
         self._max_sentence_len_writer = file_op.TextWriterSingleLine(self.max_len_file_path)
 
@@ -524,10 +526,10 @@ class NLI_DataLoader_abc(ABC):
                 n = line_num + 1.0
                 r = random.random()
                 if n <= batch_size:
-                    buffer.append(json.loads(line))
+                    buffer.append(self._parse_file_line(line))
                 elif r < batch_size / n:
                     loc = random.randint(0, batch_size - 1)
-                    buffer[loc] = json.loads(line)
+                    buffer[loc] = self._parse_file_line(line)
 
         return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
 
@@ -562,7 +564,7 @@ class NLI_DataLoader_abc(ABC):
         return DictBatch(content1, max_sequence_len=self.max_words_in_sentence_length)
 
     @abstractmethod
-    def _format_file_lines(self, lines: list):
+    def _parse_file_line(self, lines: list):
         raise NotImplementedError
 
     def __assert_valid_line_number(self, line_number: int) -> None:
@@ -573,24 +575,26 @@ class NLI_DataLoader_abc(ABC):
     def __read_line(self, line_number: int) -> list:
         self.__assert_valid_line_number(line_number)
 
-        with open(self.file_path, "r") as file:
-            content = [x for i, x in enumerate(file) if i == line_number]
+        with open(self.file_load_path, "r") as file:
+            content = [self._parse_file_line(x) for i, x in enumerate(file) if i == line_number]
 
-        content = content[0]
-        return self._format_file_lines([content])
+        return content
 
     def __read_range(self, start_index: int, end_index: int) -> list:
-        print("RANGE", start_index, end_index)
         if start_index == end_index:
             return self.__read_line(start_index)
 
         assert end_index <= self.file_size, InvalidBatchKeyError
 
-        with open(self.file_path, "r") as file:
+        # Makes use of early stopping AND known list memory allocation.
+        with open(self.file_load_path, "r") as file:
             batch_range = range(start_index, end_index)
-            # TODO test if faster to do as two or one list comprehension.
-            content = [x for i, x in enumerate(file) if i in batch_range]
-            content = [json.loads(json_string) for json_string in content]
+            content = [{} for _ in batch_range]
+            for i, x in enumerate(file):
+                if i >= end_index:
+                    break
+                if i >= start_index:
+                    content[i - start_index] = self._parse_file_line(x)
 
         return content
 
@@ -611,8 +615,8 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
 
         self.unique_words = UniqueWords(self).get_unique_words()
 
-    def _format_file_lines(self, lines: list):
-        return [json.loads(line) for line in lines]
+    def _parse_file_line(self, line: str):
+        return json.loads(line)
 
 
 class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
@@ -626,6 +630,8 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
         self.processed_file_path = self.file_dir_path + 'processed.csv'
         self.unique_words_file_path = self.file_dir_path + 'unique.csv'
         self.max_len_file_path = self.file_dir_path + 'max_len.txt'
+
+        self.file_load_path = self.processed_file_path
 
         self._make_dir()
 
@@ -656,10 +662,9 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
     def processed_file_exists(self):
         return os.path.isfile(self.processed_file_path)
 
-    @staticmethod
-    def __format_row(row) -> dict:
+    def _parse_file_line(self, line: str) -> dict:
         """ Enumerating lines reads as a single string with a \n on the end. That needs fixing"""
-        out_row = row.split(',')
+        out_row = line.split(',')
         if out_row[-1][-1] == '\n':
             out_row[-1] = out_row[-1][:-1]  # Remove the \n
         out_dict = {"sentence1": out_row[0], "sentence2": out_row[1], "gold_label": out_row[-1]}
@@ -698,95 +703,6 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
 
         return None
 
-    def load_line(self, line_number: int) -> DictBatch:
-        """ Only use this if you want a specific line, not a batch.
-
-            Very efficient, better than linecache or loading entire file.
-
-            :param line_number: int
-            :return: dict
-        """
-        with open(self.processed_file_path, "r") as file:
-            content = [self.__format_row(x) for i, x in enumerate(file) if i == line_number]
-
-        content = content[0]
-
-        return DictBatch([content], max_sequence_len=self.max_words_in_sentence_length)
-
-    def load_sequential(self, batch_size: int=256, from_start: bool = False) -> DictBatch:
-        """ Correct way to load data
-
-        Very efficient
-
-        :param from_start: bool, whether to begin from 0 or not
-        :param batch_size: int
-        :return: List[dict]
-        """
-
-        # For looping back to the beginning
-        if from_start:
-            self._batch_index = 0
-
-        if batch_size > self.file_size:
-            raise BatchSizeTooLargeError(batch_size, len(self))
-
-        if self._batch_index >= self.file_size:
-            self._batch_index = 0
-
-        batch_start_index = self._batch_index
-        batch_end_index = batch_start_index + batch_size
-
-        overlap = False
-
-        if batch_end_index >= self.file_size:
-            overlap = True
-            batch_end_index = self.file_size - 1
-
-        # Makes use of early stopping AND known list memory allocation.
-        with open(self.processed_file_path, "r") as file:
-            batch_range = range(batch_start_index, batch_end_index)
-            content = [{} for _ in batch_range]
-            for i, x in enumerate(file):
-                if i >= batch_end_index:
-                    break
-                if i >= batch_start_index:
-                    content[i - batch_start_index] = self.__format_row(x)
-
-        if len(content) == 0:
-            print('BATCH RANGE:', batch_range)
-            raise ZeroDivisionError
-
-        self._batch_index = batch_end_index
-
-        if overlap:
-            remaining_batch_size = batch_size - (batch_end_index - batch_start_index)
-            content2 = self.load_sequential(remaining_batch_size, from_start=True)
-            return DictBatch(content + content2.data, max_sequence_len=self.max_words_in_sentence_length)
-
-        return DictBatch(content, max_sequence_len=self.max_words_in_sentence_length)
-
-    def load_random(self, batch_size: int = 256) -> DictBatch:
-        """ O(File_size) load random lines"""
-        # Uses reservoir sampling.
-        # There is actually a FASTER way to do this using more complicated sampling:
-        #   https://dl.acm.org/doi/pdf/10.1145/355900.355907
-        # You could try to switch the code below into a single enumeration rather than using appends for ~2x speed-up,
-        #   However, I can't get my head around how to do that....
-
-        buffer = []
-
-        with open(self.processed_file_path, 'r') as f:
-            for line_num, line in enumerate(f):
-                n = line_num + 1.0
-                r = random.random()
-                if n <= batch_size:
-                    buffer.append(self.__format_row(line))
-                elif r < batch_size / n:
-                    loc = random.randint(0, batch_size - 1)
-                    buffer[loc] = self.__format_row(line)
-
-        return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
-
 
 class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
     def __init__(self, file_path: str, max_sequence_length=None, processing_batch_size: int = 256):
@@ -796,6 +712,8 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
         self.processed_file_path = self.file_dir_path + 'processed.csv'
         self.unique_words_file_path = self.file_dir_path + 'unique.csv'
         self.max_len_file_path = self.file_dir_path + 'max_len.txt'
+
+        self.file_load_path = file_path
 
         self._make_dir()
 
@@ -860,104 +778,13 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
     def processed_file_exists(self):
         return os.path.isfile(self.processed_file_path)
 
-    @staticmethod
-    def __format_row(row) -> dict:
+    def _parse_file_line(self, line: str) -> dict:
         """ Enumerating lines reads as a single string with a \n on the end. That needs fixing"""
-        out_row = row.split(',')
+        out_row = line.split(',')
         if out_row[-1][-1] == '\n':
             out_row[-1] = out_row[-1][:-1]  # Remove the \n
         out_dict = {"sentence1": out_row[0], "sentence2": out_row[1], "gold_label": out_row[-1]}
         return out_dict
-
-    def load_line(self, line_number: int) -> DictBatch:
-        """ Only use this if you want a specific line, not a batch.
-
-            Very efficient, better than linecache or loading entire file.
-
-            :param line_number: int
-            :return: dict
-        """
-        with open(self.processed_file_path, "r") as file:
-            content = [self.__format_row(x) for i, x in enumerate(file) if i == line_number]
-
-        content = content[0]
-
-        return DictBatch([content], max_sequence_len=self.max_words_in_sentence_length)
-
-    def load_sequential(self, batch_size: int = 256, from_start: bool = False) -> DictBatch:
-        """ Correct way to load data
-
-        Very efficient
-
-        :param from_start: bool, whether to begin from 0 or not
-        :param batch_size: int
-        :return: List[dict]
-        """
-
-        # For looping back to the beginning
-        if from_start:
-            self._batch_index = 0
-
-        if batch_size > self.file_size:
-            raise BatchSizeTooLargeError(batch_size, len(self))
-
-        if self._batch_index > self.file_size:
-            self._batch_index = 0
-
-        batch_start_index = self._batch_index
-        batch_end_index = batch_start_index + batch_size
-
-        overlap = False
-
-        if batch_end_index >= self.file_size:
-            overlap = True
-            batch_end_index = self.file_size - 1
-
-        # Makes use of early stopping AND known list memory allocation.
-        with open(self.processed_file_path, "r") as file:
-            batch_range = range(batch_start_index, batch_end_index)
-            content = [{} for _ in batch_range]
-            for i, x in enumerate(file):
-                if i >= batch_end_index:
-                    break
-                if i >= batch_start_index:
-                    content[i - batch_start_index] = self.__format_row(x)
-
-        print("Loading lines:", batch_range)
-        if len(content) == 0:
-            # print('BATCH RANGE:', batch_range)
-            raise ZeroDivisionError
-
-        self._batch_index = batch_end_index
-
-        if overlap:
-            remaining_batch_size = batch_size - (batch_end_index - batch_start_index)
-            content2 = self.load_sequential(remaining_batch_size, from_start=True)
-            return DictBatch(content + content2.data, max_sequence_len=self.max_words_in_sentence_length)
-
-        return DictBatch(content, max_sequence_len=self.max_words_in_sentence_length)
-
-    def load_random(self, batch_size: int = 256) -> DictBatch:
-        """ O(File_size) load random lines"""
-        # Uses reservoir sampling.
-        # There is actually a FASTER way to do this using more complicated sampling:
-        #   https://dl.acm.org/doi/pdf/10.1145/355900.355907
-        # You could try to switch the code below into a single enumeration rather than using appends for ~2x speed-up,
-        #   However, I can't get my head around how to do that....
-
-        buffer = []
-
-        with open(self.processed_file_path, 'r') as f:
-            for line_num, line in enumerate(f):
-                n = line_num + 1.0
-                r = random.random()
-                if n <= batch_size:
-                    buffer.append(self.__format_row(line))
-                elif r < batch_size / n:
-                    loc = random.randint(0, batch_size - 1)
-                    buffer[loc] = self.__format_row(line)
-
-        return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
 
 
 if __name__ == "__main__":
