@@ -571,12 +571,12 @@ class AbstractClassifierModel(ABC):
     def _construct_model(self, classifier_model: Callable) -> None:
         if self.is_file:
             self.load()
+            self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
             return None
         self.model = classifier_model(self.input_shape,
                                       max_seq_len=self.max_length,
                                       hyper_parameters=self.hyper_parameters,
                                       number_of_output_classes=self.num_classes).to(self.hyper_parameters.device)
-
         self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
         return None
 

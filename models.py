@@ -98,6 +98,11 @@ class StaticEntailmentNet(AbstractClassifierModel):
                                                   embed_size=embed_size, input_shape=input_shape,
                                                   num_classes=num_classes)
 
+        # Lock the model at beginning. You must call self.unlock() to train the model.
+        self.__training_locked = False
+        if self.is_file:
+            self.__training_locked = True
+
         # Essential objects
         self.word_vectors = word_vectors
 
@@ -114,14 +119,18 @@ class StaticEntailmentNet(AbstractClassifierModel):
                                                         patience=self.hyper_parameters.patience,
                                                         mode=self.hyper_parameters.early_stopping_mode)
 
+    def unlock(self) -> None:
+        self.__training_locked = False
+        return None
+
     def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), batch_loading_mode="sequential",
-              print_every: int = 1):
+              print_every: int = 1) -> None:
         training_start_time = time.perf_counter()
 
         def batch_loader(x):
             return self.data_loader.load_batch(x, mode=batch_loading_mode)
 
-        if self.is_file:
+        if self.__training_locked:
             raise ModelAlreadyTrainedError(self.model_save_path)
 
         number_of_iterations_per_epoch = self._number_of_iterations_per_epoch(batch_size=batch_size)

@@ -1,6 +1,7 @@
 class ModelAlreadyTrainedError(Exception):
     def __init__(self, file_path: str):
-        super().__init__(f'Model cannot train, since it already has been trained and saved to: {file_path}')
+        super().__init__(f'Model cannot train, since it already has been trained and saved to: {file_path}. '
+                         f'Try calling self.unlock() first!')
 
 
 class ModelIsNotValidatingError(Exception):

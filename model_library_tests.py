@@ -10,6 +10,8 @@ import model_library as ml
 from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer, HyperParams
 import torch.optim as optim
 
+import model_errors
+
 
 class TestTeardown:
     def __init__(self, dir_path: str):
@@ -152,7 +154,7 @@ class Transformer(unittest.TestCase):
 
     def test_loading(self):
         mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader,
-                                       file_path='data/test_data/test_load_transformer.pth',
+                                       file_path='data/test_data/test_load.pth',
                                        classifier_model=EntailmentTransformer)
 
         self.assertGreater(mike_net.history.accuracy[-1], 0.3)
@@ -189,6 +191,39 @@ class Transformer(unittest.TestCase):
                                            classifier_model=EntailmentTransformer,
                                            validation_data_loader=self.train_loader)
             mike_net.train(1)
+
+    def test_retrain_locked(self):
+        train_save_path = 'data/test_data/test_load'
+
+        with self.assertRaises(model_errors.ModelAlreadyTrainedError):
+            params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer)
+            mike_net.train(epochs=100, print_every=10)
+
+    def test_retrain_unlocked(self):
+        train_save_path = 'data/test_data/test_retrain'
+
+        with TestTeardown(train_save_path):
+            params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer)
+            mike_net.train(epochs=100, print_every=10)
+
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer)
+            mike_net.unlock()
+            mike_net.train(epochs=100, print_every=10)
+
+            self.assertGreater(mike_net.history.accuracy[-1], 0.3)
+            self.assertLess(mike_net.history.loss[-1], 3)
+            self.assertLess(mike_net.info.runtime, 20)  # Red flag if it takes longer than 20 seconds.
+
+
+class ModelPropertyTesting(unittest.TestCase):
+    pass
 
 
 if __name__ == '__main__':

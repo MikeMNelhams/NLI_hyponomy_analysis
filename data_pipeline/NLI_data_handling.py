@@ -439,7 +439,7 @@ class NLI_DataLoader_abc(ABC):
     def _get_number_lines(self) -> int:
         """ Run at init"""
         with open(self.file_path, "r") as file:
-            number_of_lines = sum([1 for i, x in enumerate(file) if x[-1] == '\n'])
+            number_of_lines = sum(1 for _ in file)
         return number_of_lines
 
     def is_valid_batch_mode(self, mode: str) -> bool:
@@ -489,7 +489,7 @@ class NLI_DataLoader_abc(ABC):
             self._max_sentence_len_writer.save(max_words_in_sentence_length)
         return max_words_in_sentence_length
 
-    def load_batch(self, batch_size, mode: str, **kwargs) -> DictBatch:
+    def load_batch(self, batch_size: int, mode: str, **kwargs) -> DictBatch:
         if mode == "sequential":
             return self.load_sequential(batch_size, **kwargs)
         if mode == "random":
@@ -525,6 +525,37 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
 
         self.unique_words = UniqueWords(self).get_unique_words()
 
+    def __assert_valid_line_number(self, line_number: int) -> None:
+        if line_number >= self.file_size or line_number < 0:
+            raise InvalidBatchKeyError
+        return None
+
+    def _read_line(self, line_number: int) -> list:
+        self.__assert_valid_line_number(line_number)
+
+        with open(self.file_path, "r") as file:
+            content = [x for i, x in enumerate(file) if i == line_number]
+
+        content = content[0]
+        content = json.loads(content)
+
+        return [content]
+
+    def _read_range(self, start_index: int, end_index: int) -> list:
+        print("RANGE", start_index, end_index)
+        if start_index == end_index:
+            return self._read_line(start_index)
+
+        assert end_index <= self.file_size, InvalidBatchKeyError
+
+        with open(self.file_path, "r") as file:
+            batch_range = range(start_index, end_index)
+            # TODO test if faster to do as two or one list comprehension.
+            content = [x for i, x in enumerate(file) if i in batch_range]
+            content = [json.loads(json_string) for json_string in content]
+
+        return content
+
     def load_line(self, line_number: int) -> DictBatch:
         """ Only use this if you want a specific line, not a batch.
 
@@ -533,59 +564,9 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
         :param line_number: int
         :return: dict
         """
-        with open(self.file_path, "r") as file:
-            content = [x for i, x in enumerate(file) if i == line_number]
+        content = self._read_line(line_number)
 
-        content = content[0]
-        content = json.loads(content)
-
-        return DictBatch([content], max_sequence_len=self.max_words_in_sentence_length)
-
-    def load_sequential(self, batch_size: int=256, from_start: bool = False) -> DictBatch:
-        """ Correct way to load data
-
-        Very efficient
-
-        :param from_start: bool, whether to begin from 0 or not
-        :param batch_size: int
-        :return: List[dict]
-        """
-
-        # For looping back to the beginning
-        if from_start:
-            self._batch_index = 0
-
-        if batch_size > self.file_size:
-            raise BatchSizeTooLargeError(batch_size, len(self))
-
-        if self._batch_index >= self.file_size:
-            self._batch_index = 0
-
-        batch_start_index = self._batch_index
-        batch_end_index = batch_start_index + batch_size
-
-        overlap = False
-
-        if batch_end_index > self.file_size:
-            overlap = True
-            batch_end_index = self.file_size - 1
-
-        with open(self.file_path, "r") as file:
-            batch_range = range(batch_start_index, batch_end_index)
-            content = [x for i, x in enumerate(file) if i in batch_range]
-            # content = [x for x in file[batch_start_index:batch_end_index]]
-
-        content2 = [json.loads(json_string) for json_string in content]
-        del content
-
-        self._batch_index = batch_end_index
-
-        if overlap:
-            remaining_batch_size = batch_size - (batch_end_index - batch_start_index)
-            content3 = self.load_sequential(remaining_batch_size, from_start=True)
-            return DictBatch(content2 + content3.data, max_sequence_len=self.max_words_in_sentence_length)
-
-        return DictBatch(content2, max_sequence_len=self.max_words_in_sentence_length)
+        return DictBatch(content, max_sequence_len=self.max_words_in_sentence_length)
 
     def load_random(self, batch_size: int=256) -> DictBatch:
         """ O(File_size) load random lines"""
@@ -608,6 +589,36 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
                     buffer[loc] = json.loads(line)
 
         return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
+
+    def load_sequential(self, batch_size: int=256, from_start: bool = False) -> DictBatch:
+        if from_start:
+            self._batch_index = 0
+
+        if batch_size > self.file_size:
+            raise BatchSizeTooLargeError(batch_size, len(self))
+
+        start_index = self._batch_index
+        end_index = self._batch_index + batch_size
+
+        overlap = False
+        if end_index > self.file_size:
+            overlap = True
+            end_index = self.file_size
+
+        content1 = self._read_range(start_index, end_index)
+
+        if overlap:
+            end_index_wrapped = batch_size - (self.file_size - start_index)
+            content2 = self._read_range(0, end_index_wrapped)
+            self._batch_index = end_index_wrapped
+            return DictBatch(content1 + content2, max_sequence_len=self.max_words_in_sentence_length)
+
+        if end_index == self.file_size:
+            self._batch_index = 0
+        else:
+            self._batch_index = end_index
+
+        return DictBatch(content1, max_sequence_len=self.max_words_in_sentence_length)
 
 
 class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
@@ -896,7 +907,7 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
         if batch_size > self.file_size:
             raise BatchSizeTooLargeError(batch_size, len(self))
 
-        if self._batch_index >= self.file_size:
+        if self._batch_index > self.file_size:
             self._batch_index = 0
 
         batch_start_index = self._batch_index
@@ -918,8 +929,9 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
                 if i >= batch_start_index:
                     content[i - batch_start_index] = self.__format_row(x)
 
+        print("Loading lines:", batch_range)
         if len(content) == 0:
-            print('BATCH RANGE:', batch_range)
+            # print('BATCH RANGE:', batch_range)
             raise ZeroDivisionError
 
         self._batch_index = batch_end_index
