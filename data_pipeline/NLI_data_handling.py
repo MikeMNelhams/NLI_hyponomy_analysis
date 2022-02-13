@@ -425,6 +425,7 @@ class NLI_DataLoader_abc(ABC):
         self.file_size = None
         # TODO make this derive from the data given
         self.num_sentences = 2
+        self._batch_index = 0
 
     def __len__(self):
         return self.file_size
@@ -496,66 +497,6 @@ class NLI_DataLoader_abc(ABC):
             return self.load_random(batch_size)
         raise InvalidBatchMode
 
-    @abstractmethod
-    def load_line(self, line_number: int) -> DictBatch:
-        raise NotImplementedError
-
-    @abstractmethod
-    def load_sequential(self, batch_size: int=256, from_start: bool = False) -> DictBatch:
-        raise NotImplementedError
-
-    @abstractmethod
-    def load_random(self, batch_size: int=256) -> DictBatch:
-        raise NotImplementedError
-
-
-class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
-    def __init__(self, file_path: str, max_sequence_length=None):
-        super(SNLI_DataLoader_Unclean, self).__init__(file_path, max_sequence_length=max_sequence_length)
-
-        self._batch_index = 0
-
-        # Run once at runtime, rather than multiple times at call.
-        self.file_size = self._get_number_lines()
-
-        if max_sequence_length is None:
-            self.max_words_in_sentence_length = self._get_max_sequence_length()
-        else:
-            self.max_words_in_sentence_length = max_sequence_length
-
-        self.unique_words = UniqueWords(self).get_unique_words()
-
-    def __assert_valid_line_number(self, line_number: int) -> None:
-        if line_number >= self.file_size or line_number < 0:
-            raise InvalidBatchKeyError
-        return None
-
-    def _read_line(self, line_number: int) -> list:
-        self.__assert_valid_line_number(line_number)
-
-        with open(self.file_path, "r") as file:
-            content = [x for i, x in enumerate(file) if i == line_number]
-
-        content = content[0]
-        content = json.loads(content)
-
-        return [content]
-
-    def _read_range(self, start_index: int, end_index: int) -> list:
-        print("RANGE", start_index, end_index)
-        if start_index == end_index:
-            return self._read_line(start_index)
-
-        assert end_index <= self.file_size, InvalidBatchKeyError
-
-        with open(self.file_path, "r") as file:
-            batch_range = range(start_index, end_index)
-            # TODO test if faster to do as two or one list comprehension.
-            content = [x for i, x in enumerate(file) if i in batch_range]
-            content = [json.loads(json_string) for json_string in content]
-
-        return content
-
     def load_line(self, line_number: int) -> DictBatch:
         """ Only use this if you want a specific line, not a batch.
 
@@ -564,7 +505,7 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
         :param line_number: int
         :return: dict
         """
-        content = self._read_line(line_number)
+        content = self.__read_line(line_number)
 
         return DictBatch(content, max_sequence_len=self.max_words_in_sentence_length)
 
@@ -605,11 +546,11 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
             overlap = True
             end_index = self.file_size
 
-        content1 = self._read_range(start_index, end_index)
+        content1 = self.__read_range(start_index, end_index)
 
         if overlap:
             end_index_wrapped = batch_size - (self.file_size - start_index)
-            content2 = self._read_range(0, end_index_wrapped)
+            content2 = self.__read_range(0, end_index_wrapped)
             self._batch_index = end_index_wrapped
             return DictBatch(content1 + content2, max_sequence_len=self.max_words_in_sentence_length)
 
@@ -619,6 +560,59 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
             self._batch_index = end_index
 
         return DictBatch(content1, max_sequence_len=self.max_words_in_sentence_length)
+
+    @abstractmethod
+    def _format_file_lines(self, lines: list):
+        raise NotImplementedError
+
+    def __assert_valid_line_number(self, line_number: int) -> None:
+        if line_number >= self.file_size or line_number < 0:
+            raise InvalidBatchKeyError
+        return None
+
+    def __read_line(self, line_number: int) -> list:
+        self.__assert_valid_line_number(line_number)
+
+        with open(self.file_path, "r") as file:
+            content = [x for i, x in enumerate(file) if i == line_number]
+
+        content = content[0]
+        return self._format_file_lines([content])
+
+    def __read_range(self, start_index: int, end_index: int) -> list:
+        print("RANGE", start_index, end_index)
+        if start_index == end_index:
+            return self.__read_line(start_index)
+
+        assert end_index <= self.file_size, InvalidBatchKeyError
+
+        with open(self.file_path, "r") as file:
+            batch_range = range(start_index, end_index)
+            # TODO test if faster to do as two or one list comprehension.
+            content = [x for i, x in enumerate(file) if i in batch_range]
+            content = [json.loads(json_string) for json_string in content]
+
+        return content
+
+
+class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
+    def __init__(self, file_path: str, max_sequence_length=None):
+        super(SNLI_DataLoader_Unclean, self).__init__(file_path, max_sequence_length=max_sequence_length)
+
+        self._batch_index = 0
+
+        # Run once at runtime, rather than multiple times at call.
+        self.file_size = self._get_number_lines()
+
+        if max_sequence_length is None:
+            self.max_words_in_sentence_length = self._get_max_sequence_length()
+        else:
+            self.max_words_in_sentence_length = max_sequence_length
+
+        self.unique_words = UniqueWords(self).get_unique_words()
+
+    def _format_file_lines(self, lines: list):
+        return [json.loads(line) for line in lines]
 
 
 class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
