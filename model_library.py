@@ -33,12 +33,16 @@ class EarlyStoppingTraining:
     """ https://clay-atlas.com/us/blog/2021/08/25/pytorch-en-early-stopping/ """
     modes = ("strict", "moving_average", "minimum", "none")
 
-    def __init__(self, save_checkpoint: Callable, patience: int = 5, mode: str ="minimum"):
+    def __init__(self, save_checkpoint: Callable, file_path: str, patience: int = 5, mode: str ="minimum"):
         self.step = self.__select_measure(mode)
 
         self.patience = patience
+        self.patience_triggers_file_writer = file_op.TextWriterSingleLine(file_path)
         self.loss_comparison = np.inf
+
         self.trigger_times = 0
+        if self.patience_triggers_file_writer.file_exists:
+            self.trigger_times = self.patience_triggers_file_writer.load_safe()
 
         # For saving checkpoints during each __call__
         self.save_checkpoint = save_checkpoint
@@ -62,6 +66,8 @@ class EarlyStoppingTraining:
 
         if mode == "none":
             return self.__none
+
+        self.patience_triggers_file_writer.save(self.trigger_times)
 
         return self.__minimum
 

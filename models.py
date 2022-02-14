@@ -113,9 +113,10 @@ class StaticEntailmentNet(AbstractClassifierModel):
         self.model_is_validating = model_is_validating
         if self.model_is_validating:
             self.__validation_data_loader = validation_data_loader
-            self.__validation_save_path = self._file_dir_path + 'validation_history.csv'
+            self.__validation_save_path = self._file_dir_path + "validation_history.csv"
             self.validation_history = History(self.__validation_save_path, label="Validation")
             self.early_stopping = EarlyStoppingTraining(save_checkpoint=self.save_checkpoint,
+                                                        file_path=self._file_dir_path + "patience.txt",
                                                         patience=self.hyper_parameters.patience,
                                                         mode=self.hyper_parameters.early_stopping_mode)
 

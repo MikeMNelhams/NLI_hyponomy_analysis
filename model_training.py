@@ -20,7 +20,6 @@ def main():
     validation_small_path = "data/snli_small/snli_small1_dev.jsonl"
 
     train_loader = SNLI_DataLoader_POS_Processed(train_small_path)
-
     validation_loader = SNLI_DataLoader_POS_Processed(validation_small_path)
 
     word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
@@ -37,7 +36,7 @@ def main():
 
     mike_net = StaticEntailmentNet(word_vectors, train_loader,
                                    file_path='data/test_data/test_load.pth',
-                                   classifier_model=NeuralNetwork)
+                                   classifier_model=NeuralNetwork, hyper_parameters=params)
 
     # mike_net = StaticEntailmentNet(word_vectors, train_loader,
     #                                file_path='data/models/nn/hyponym_full_model1.pth',

@@ -154,6 +154,9 @@ class ProcessedLoad_L(unittest.TestCase):
     test_loader = SNLI_DataLoader_Processed("../data/snli_1.0/snli_1.0_dev.jsonl", "lemma")
     test_loader_small = SNLI_DataLoader_Processed("../data/snli_small/snli_small1_dev.jsonl", "lemma")
 
+    def test_line_count(self):
+        self.assertEqual(len(self.test_loader_small), 101)
+
     def test_load_random(self):
         self.test_loader._batch_index = 0
         e = self.test_loader.load_random(1000)
@@ -174,7 +177,7 @@ class ProcessedLoad_L(unittest.TestCase):
 
     def test_load_line_final(self):
         self.test_loader_small._batch_index = 0
-        print(self.test_loader_small.load_line(100))
+        print(self.test_loader_small.load_line(99))
 
     def test_load_line_first(self):
         self.test_loader_small._batch_index = 0
@@ -277,6 +280,9 @@ class ProcessedLoad_POS(unittest.TestCase):
     test_loader = SNLI_DataLoader_POS_Processed("../data/snli_1.0/snli_1.0_dev.jsonl")
     test_loader_small = SNLI_DataLoader_POS_Processed("../data/snli_small/snli_small1_dev.jsonl")
 
+    def test_line_count(self):
+        self.assertEqual(len(self.test_loader_small), 101)
+
     def test_load_random(self):
         self.test_loader._batch_index = 0
         e = self.test_loader.load_random(1000)
@@ -297,7 +303,7 @@ class ProcessedLoad_POS(unittest.TestCase):
 
     def test_load_line_final(self):
         self.test_loader_small._batch_index = 0
-        print(self.test_loader_small.load_line(100))
+        print(self.test_loader_small.load_line(98))
 
     def test_load_line_first(self):
         self.test_loader_small._batch_index = 0

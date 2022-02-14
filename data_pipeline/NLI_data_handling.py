@@ -384,7 +384,6 @@ class UniqueWords:
 
     def __unique_words(self) -> list:
         train_data = self.data_loader.load_all()
-        print('ALL: ', train_data)
         unique_words1 = train_data.to_sentence_batch("sentence1")
         unique_words2 = train_data.to_sentence_batch("sentence2")
 
@@ -443,6 +442,7 @@ class NLI_DataLoader_abc(ABC):
         """ Run at init"""
         with open(self.file_path, "r") as file:
             number_of_lines = sum(1 for _ in file)
+
         return number_of_lines
 
     def is_valid_batch_mode(self, mode: str) -> bool:
@@ -694,7 +694,9 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
         # Stops if it has looped across entire dataset.
         for i, batch_size in enumerate(batch_sizes):
             print(f"Processing batch ~{i} of {num_iters}...")
-            data_batch = unclean_data_loader.load_sequential(batch_size).to_model_data()
+            data_batch = unclean_data_loader.load_sequential(batch_size)
+            data_batch = data_batch.to_model_data()
+
             data_batch.process(processing_type)
 
             data_batch.append_to_file(self.processed_file_path)
@@ -713,7 +715,7 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
         self.unique_words_file_path = self.file_dir_path + 'unique.csv'
         self.max_len_file_path = self.file_dir_path + 'max_len.txt'
 
-        self.file_load_path = file_path
+        self.file_load_path = self.processed_file_path
 
         self._make_dir()
 
@@ -724,7 +726,6 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
         self.file_size = self._get_number_lines()
 
         if not self.processed_file_exists:
-            print("here")
             file_op.make_empty_file_safe(self.processed_file_path)
 
             self.__process_and_save_data(processing_batch_size=processing_batch_size)
@@ -757,8 +758,6 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
 
         batch_sizes = self.__temporary_batch_size_schedule(processing_batch_size)
         num_iters = len(batch_sizes)
-
-        print(num_iters)
 
         # Stops if it has looped across entire dataset.
         for i, batch_size in enumerate(batch_sizes):
