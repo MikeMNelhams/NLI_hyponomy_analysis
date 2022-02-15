@@ -74,6 +74,28 @@ def lemmatise_sentence_pos(sentence: str) -> str:
     return ' '.join(words)
 
 
+class InvalidProcessingMode(Exception):
+    """ When a given processing mode is not implemented yet"""
+    pass
+
+
+class ProcessingSynonyms:
+    synonyms_for_l = ("lemmatise", "lemmatised", "lemma")
+    synonyms_for_cl = ("clean_lemmatise", "clean_lemmatised", "cl", "both", "clean_lemma")
+    synonyms_for_l_pos = ("lemma_pos", "lemmatised_pos", "l_pos", "lpl", "lemmatise_pos")
+
+    @staticmethod
+    def map_processing_mode(mode: str) -> str:
+        if mode in ProcessingSynonyms.synonyms_for_l:
+            return "lemmatised"
+        if mode in ProcessingSynonyms.synonyms_for_cl:
+            return "clean_lemmatised"
+        if mode in ProcessingSynonyms.synonyms_for_l_pos:
+            return "lemmatised_pos"
+
+        raise InvalidProcessingMode
+
+
 class WordParser:
     """ A way to combine multiple filters into a callable."""
     def __init__(self, actions: Iterable[callable]):

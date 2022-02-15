@@ -20,7 +20,7 @@ from nltk.tokenize import word_tokenize
 import csv
 import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 import NLI_hyponomy_analysis.data_pipeline.word_operations as word_op
-from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser
+from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser, ProcessingSynonyms
 
 
 class BatchSizeTooLargeError(Exception):
@@ -139,14 +139,11 @@ class EntailmentModelBatch:
         return max(len(line.split(self.word_delimiter)) for line in sentence_column)
 
     def process(self, processing_type: str = "clean", processing_actions=None):
-        synonyms_for_l = ("lemmatise", "lemmatised", "lemma")
-        synonyms_for_cl = ("clean_lemmatise", "clean_lemmatised", "cl", "both", "clean_lemma")
-        synonyms_for_l_pos = ("lemma_pos", "lemmatised_pos", "l_pos", "lpl", "lemmatise_pos")
-        if processing_type in synonyms_for_l:
+        if processing_type in ProcessingSynonyms.synonyms_for_l:
             return self.lemmatise_data(processing_actions)
-        if processing_type in synonyms_for_cl:
+        if processing_type in ProcessingSynonyms.synonyms_for_cl:
             return self.lemmatise_data(self.clean_data(processing_actions))
-        if processing_type in synonyms_for_l_pos:
+        if processing_type in ProcessingSynonyms.synonyms_for_l_pos:
             return self.lemmatise_data_pos(processing_actions)
 
         return self.clean_data(processing_actions)
@@ -441,7 +438,6 @@ class NLI_DataLoader_abc(ABC):
     def _get_number_lines(self) -> int:
         """ Run at init"""
         number_of_lines = file_op.count_file_lines(self.file_path)
-
         return number_of_lines
 
     def is_valid_batch_mode(self, mode: str) -> bool:
@@ -602,8 +598,6 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
     def __init__(self, file_path: str, max_sequence_length=None):
         super(SNLI_DataLoader_Unclean, self).__init__(file_path, max_sequence_length=max_sequence_length)
 
-        self._batch_index = 0
-
         # Run once at runtime, rather than multiple times at call.
         self.file_size = self._get_number_lines()
 
@@ -619,11 +613,11 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
 
 
 class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
-    def __init__(self, file_path: str, processing_type: str, max_sequence_length=None,
+    def __init__(self, file_path: str, processing_mode: str, max_sequence_length=None,
                  processing_batch_size: int =256):
         super(SNLI_DataLoader_Processed, self).__init__(file_path, max_sequence_length=max_sequence_length)
 
-        self.__processing_type = processing_type
+        self.__processing_type = ProcessingSynonyms.map_processing_mode(processing_mode)
 
         self.file_dir_path += self.processing_type + '/'
         self.processed_file_path = self.file_dir_path + 'processed.csv'
@@ -637,7 +631,6 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
         self._max_sentence_len_writer = file_op.TextWriterSingleLine(self.max_len_file_path)
 
         # Run once at runtime, rather than multiple times at call.
-        self._batch_index = 0
         self.file_size = self._get_number_lines()
 
         if not self.processed_file_exists:
