@@ -440,8 +440,7 @@ class NLI_DataLoader_abc(ABC):
 
     def _get_number_lines(self) -> int:
         """ Run at init"""
-        with open(self.file_path, "r") as file:
-            number_of_lines = sum(1 for _ in file)
+        number_of_lines = file_op.count_file_lines(self.file_path)
 
         return number_of_lines
 

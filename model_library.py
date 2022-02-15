@@ -36,6 +36,8 @@ class EarlyStoppingTraining:
     def __init__(self, save_checkpoint: Callable, file_path: str, patience: int = 5, mode: str ="minimum"):
         self.step = self.__select_measure(mode)
 
+        self.__assert_valid_patience(patience)
+
         self.patience = patience
         self.patience_triggers_file_writer = file_op.TextWriterSingleLine(file_path)
         self.loss_comparison = np.inf
@@ -48,7 +50,9 @@ class EarlyStoppingTraining:
         self.save_checkpoint = save_checkpoint
 
     def __call__(self, loss: float) -> bool:
-        return self.step(loss)
+        out = self.step(loss)
+        self.patience_triggers_file_writer.save(self.trigger_times)
+        return out
 
     def reset_validation_trigger(self) -> None:
         self.trigger_times = 0
@@ -66,8 +70,6 @@ class EarlyStoppingTraining:
 
         if mode == "none":
             return self.__none
-
-        self.patience_triggers_file_writer.save(self.trigger_times)
 
         return self.__minimum
 
@@ -126,7 +128,15 @@ class EarlyStoppingTraining:
     @staticmethod
     def assert_valid_mode(mode) -> None:
         if mode not in EarlyStoppingTraining.modes:
+            raise ValueError
+        return None
+
+    @staticmethod
+    def __assert_valid_patience(patience: int) -> None:
+        if type(patience) != int:
             raise TypeError
+        if patience < 0:
+            raise ValueError
         return None
 
 
@@ -619,6 +629,7 @@ class AbstractClassifierModel(ABC):
         if not self.is_file:
             raise FileNotFoundError
         self.model = torch.load(self.model_save_path)
+        self.model = self.model.to(self.hyper_parameters.device)
         print('Model loaded!')
         return None
 

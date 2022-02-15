@@ -282,6 +282,7 @@ class ProcessedLoad_POS(unittest.TestCase):
 
     def test_line_count(self):
         self.assertEqual(len(self.test_loader_small), 101)
+        self.assertEqual(len(self.test_loader), 10000)
 
     def test_load_random(self):
         self.test_loader._batch_index = 0

@@ -82,7 +82,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
         model_is_validating = validation_data_loader is not None
 
-        embed_size = word_vectors.d_emb
         # TODO make this dynamic based on data loader.
         num_classes = 4  # 0, 1, 2, 3. Entailment, Neutral, Contradiction, -
 
@@ -91,6 +90,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         if model_is_validating:
             max_length = max(max_length, validation_data_loader.max_words_in_sentence_length)
 
+        embed_size = word_vectors.d_emb
         input_shape = (train_data_loader.num_sentences, max_length, embed_size)
 
         super(StaticEntailmentNet, self).__init__(train_data_loader=train_data_loader, file_path=file_path,
@@ -116,9 +116,11 @@ class StaticEntailmentNet(AbstractClassifierModel):
             self.__validation_save_path = self._file_dir_path + "validation_history.csv"
             self.validation_history = History(self.__validation_save_path, label="Validation")
             self.early_stopping = EarlyStoppingTraining(save_checkpoint=self.save_checkpoint,
-                                                        file_path=self._file_dir_path + "patience.txt",
+                                                        file_path=self._file_dir_path + "trigger_times.txt",
                                                         patience=self.hyper_parameters.patience,
                                                         mode=self.hyper_parameters.early_stopping_mode)
+            if self.early_stopping.trigger_times == self.hyper_parameters.patience:
+                raise ModelAlreadyTrainedError
 
     def unlock(self) -> None:
         self.__training_locked = False
@@ -254,7 +256,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
             lines = lines.to(self.hyper_parameters.device)
             masks = masks.to(self.hyper_parameters.device)
             labels = labels.to(self.hyper_parameters.device)
-
             outputs = self.model(lines, masks)
 
             for label, prediction in zip(labels, torch.argmax(outputs, dim=1)):

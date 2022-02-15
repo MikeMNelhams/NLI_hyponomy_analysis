@@ -17,9 +17,13 @@ def list_files_in_directory(directory_path: str, extension_type: str = '.txt') -
 
 
 def file_path_is_of_extension(file_path: str, extension: str= '.txt') -> bool:
-    """ Does not assume that the file exists"""
+    """ Only checks the string, not that file exists"""
     if len(file_path) <= len(extension):
         return False
+
+    if '.' not in extension:
+        raise InvalidPathError
+
     if file_path[-len(extension):] != extension:
         return False
     return True
@@ -37,17 +41,25 @@ def file_path_extension(file_path: str) -> str:
     raise InvalidPathError
 
 
-def is_file(file_path: str, extension: str) -> bool:
+def count_file_lines(file_path: str) -> int:
+    with open(file_path, "r") as file:
+        data = file.read()
+
+    if len(data) == 0:
+        return 1
+
+    number_of_lines = sum(1 for line in data if line[-1] == '\n') + 1
+
+    return number_of_lines
+
+
+def is_file(file_path: str) -> bool:
     """ Assumes that the file exists """
     if len(file_path) == 0:
         return False
     if not os.path.isfile(file_path):
         return False
-    if len(file_path) < 3:
-        return False
-    if len(file_path) <= len(extension):
-        return False
-    if file_path[-len(extension):] != extension:
+    if len(file_path) < 2:
         return False
     return True
 
@@ -85,20 +97,18 @@ def file_path_without_extension(file_path: str) -> str:
 
 
 def trim_end_of_file_blank_line(file_path: str) -> None:
-    # TODO speed up by switching to memoryview
     with open(file_path, 'r') as in_file:
         data = in_file.read()
 
-    if data[-2:-1] == '\n\n':
-        data = data[:-1]
-
     with open(file_path, 'w') as out_file:
-        out_file.write(data)
+        out_file.write(data.rstrip('\n'))
 
     return None
 
 
 def make_empty_file(file_path: str) -> None:
+    """Use make_empty_file_safe if you don't want to overwrite data"""
+
     with open(file_path, "w") as outfile:
         outfile.write('')
     return None
@@ -140,11 +150,17 @@ class DictWriter:
 
     @property
     def file_exists(self):
-        return is_file(self.file_path, '.json')
+        return is_file(self.file_path)
 
     @property
     def file_empty(self):
         return self.file_exists and os.stat(self.file_path).st_size == 0
+
+    @property
+    def keys(self) -> list:
+        if not self.file_exists:
+            raise KeyError
+        return list(self.load().keys())
 
     @load_print_decorator
     def load(self) -> dict:
@@ -193,7 +209,7 @@ class TextWriterSingleLine:
 
     @property
     def file_exists(self):
-        return is_file(self.file_path, '.txt')
+        return is_file(self.file_path)
 
     @property
     def file_empty(self):
@@ -239,7 +255,7 @@ class TextLogger:
 
     @property
     def file_exists(self):
-        return is_file(self.file_path, '.txt')
+        return is_file(self.file_path)
 
     @property
     def file_empty(self):
