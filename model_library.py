@@ -39,24 +39,28 @@ class EarlyStoppingTraining:
         self.__assert_valid_patience(patience)
 
         self.patience = patience
-        self.patience_triggers_file_writer = file_op.TextWriterSingleLine(file_path)
+        self.triggers_file_writer = file_op.TextWriterSingleLine(file_path)
         self.loss_comparison = np.inf
 
         self.trigger_times = 0
-        if self.patience_triggers_file_writer.file_exists:
-            self.trigger_times = self.patience_triggers_file_writer.load_safe()
+        if self.triggers_file_writer.file_exists:
+            self.trigger_times = int(self.triggers_file_writer.load_safe())
 
         # For saving checkpoints during each __call__
         self.save_checkpoint = save_checkpoint
 
     def __call__(self, loss: float) -> bool:
         out = self.step(loss)
-        self.patience_triggers_file_writer.save(self.trigger_times)
+        self.save_trigger_times()
         return out
 
     def reset_validation_trigger(self) -> None:
         self.trigger_times = 0
         self.save_checkpoint()
+        return None
+
+    def save_trigger_times(self) -> None:
+        self.triggers_file_writer.save(self.trigger_times)
         return None
 
     def __select_measure(self, mode) -> Callable[[float], bool]:
@@ -141,7 +145,7 @@ class EarlyStoppingTraining:
 
 
 class HyperParams:
-    def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 8, dropout: float = 0,
+    def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 5, dropout: float = 0,
                  device="cuda", learning_rate: float = 0.1, optimizer=optim.Adadelta,
                  patience=5, early_stopping_mode="moving_average"):
         # General parameters
@@ -283,7 +287,7 @@ class History:
         return self.__accuracy
 
     def is_file(self) -> bool:
-        return file_op.is_file(self.file_path, '.csv')
+        return file_op.is_file(self.file_path)
 
     def assert_not_empty(self) -> None:
         if len(self) == 0:
@@ -323,7 +327,7 @@ class History:
         return None
 
     def load(self) -> None:
-        assert file_op.is_file(self.file_path, '.csv'), FileNotFoundError
+        assert file_op.is_file(self.file_path), FileNotFoundError
         print('Loading Model History...')
         data_from_file = pd.read_csv(self.file_path)
         self.__loss = data_from_file['loss'].tolist()
@@ -377,9 +381,34 @@ class AdditionalInformation:
     def __init__(self, file_path: str):
         self.file_path = file_path
 
-        self.data = {'total_runtime': 0}
-
         self.__dict_writer = file_op.DictWriter(self.file_path)
+
+        self.data = {'total_runtime': 0, "max_length": 0}
+
+        if self.__dict_writer.file_exists:
+            self.data = self.__dict_writer.load()
+
+    def __setitem__(self, key: str, value):
+        self.data[key] = value
+        return None
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __delitem__(self, key):
+        if key in self.protected_keys:
+            raise KeyError
+        del self.data[key]
+        return None
+
+    @property
+    def protected_keys(self):
+        """These cannot be deleted"""
+        return ["total_runtime", "max_length"]
+
+    @property
+    def is_file(self):
+        return self.__dict_writer.file_exists
 
     def add_runtime(self, runtime: float):
         self.data['total_runtime'] += runtime
@@ -394,6 +423,9 @@ class AdditionalInformation:
     def save(self) -> None:
         self.__dict_writer.save(self.data)
         return None
+
+    def load(self) -> dict:
+        return self.__dict_writer.load()
 
 
 class EntailmentSelfAttention(nn.Module):
@@ -574,6 +606,11 @@ class AbstractClassifierModel(ABC):
 
         # Construct the model
         self.model = None
+
+        if not self.info.is_file:
+            self.info["max_length"] = self.max_length
+            self.info.save()  # This is important for init the model.
+
         self.optimizer = hyper_parameters.optimizer
         self._construct_model(classifier_model=classifier_model)
 

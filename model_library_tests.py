@@ -6,11 +6,13 @@ from dotenv import load_dotenv
 
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed, SNLI_DataLoader_Unclean
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
+import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
+
 import model_library as ml
 from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer, HyperParams
-import torch.optim as optim
-from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
 import model_errors
+import torch.optim as optim
 
 
 class TestTeardown:
@@ -240,7 +242,7 @@ class BasicProperties(unittest.TestCase):
 
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params, classifier_model=EntailmentTransformer)
-            mike_net.train(epochs=100, print_every=10)
+            mike_net.train(epochs=5, print_every=10)
 
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params, classifier_model=EntailmentTransformer)
@@ -251,7 +253,7 @@ class BasicProperties(unittest.TestCase):
             self.assertLess(mike_net.history.loss[-1], 3)
             self.assertLess(mike_net.info.runtime, 20)  # Red flag if it takes longer than 20 seconds.
 
-    def test_patience_not_reset_when_unlocked(self):
+    def test_patience_not_reset_when_loaded(self):
         train_save_path = 'data/test_data/test_load'
 
         params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
@@ -259,9 +261,9 @@ class BasicProperties(unittest.TestCase):
         mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                        hyper_parameters=params, classifier_model=NeuralNetwork,
                                        validation_data_loader=self.validation_loader)
-        assert mike_net.early_stopping.trigger_times != 0
+        self.assertGreater(mike_net.early_stopping.trigger_times, 0)
         mike_net.unlock()
-        assert mike_net.early_stopping.trigger_times != 0
+        self.assertGreater(mike_net.early_stopping.trigger_times, 0)
 
     def test_negative_patience_model(self):
         train_save_path = 'data/test_data/test_model'
@@ -274,6 +276,40 @@ class BasicProperties(unittest.TestCase):
                 StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                     hyper_parameters=params, classifier_model=NeuralNetwork,
                                     validation_data_loader=self.validation_loader)
+
+    def test_additional_info_init_exists(self):
+        train_save_path = 'data/test_data/test_load'
+        params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+        mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                       hyper_parameters=params, classifier_model=EntailmentTransformer)
+        self.assertTrue(file_op.is_file(train_save_path + "/info.json"))
+        self.assertGreater(mike_net.info.runtime, 0)
+        self.assertEqual(32, mike_net.info["max_length"])
+
+    def test_additional_info_init(self):
+        train_save_path = 'data/test_data/test_model'
+        # Low patience and with strict early stopping, Likely to early stop.
+        params = ml.HyperParams(learning_rate=1, patience=1, optimizer=optim.Adadelta, early_stopping_mode="strict")
+
+        with TestTeardown(train_save_path):
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer,
+                                           validation_data_loader=self.train_loader)
+            self.assertTrue(file_op.is_file(train_save_path + "/info.json"))
+            self.assertEqual(mike_net.info.runtime, 0)
+            self.assertEqual(26, mike_net.info["max_length"])
+            mike_net.train(200)
+
+            self.assertGreater(mike_net.info.runtime, 0)
+            self.assertEqual(26, mike_net.info["max_length"])
+            self.assertGreater(mike_net.early_stopping.trigger_times, 0)
+
+            with self.assertRaises(model_errors.ModelAlreadyTrainedError):
+                mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                               hyper_parameters=params, classifier_model=EntailmentTransformer,
+                                               validation_data_loader=self.train_loader)
+                mike_net.unlock()
+                mike_net.train(100)
 
 
 if __name__ == '__main__':

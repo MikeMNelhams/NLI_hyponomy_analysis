@@ -481,11 +481,12 @@ class NLI_DataLoader_abc(ABC):
 
     def _get_max_sequence_length(self) -> int:
         if os.path.isfile(self.max_len_file_path):
-            return int(self._max_sentence_len_writer.load())
+            max_length = int(self._max_sentence_len_writer.load())
+            return max_length
         else:
-            max_words_in_sentence_length = self._max_sequence_len()
-            self._max_sentence_len_writer.save(max_words_in_sentence_length)
-        return max_words_in_sentence_length
+            max_length = self._max_sequence_len()
+            self._max_sentence_len_writer.save(max_length)
+        return max_length
 
     def load_batch(self, batch_size: int, mode: str, **kwargs) -> DictBatch:
         if mode == "sequential":

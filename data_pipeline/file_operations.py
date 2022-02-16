@@ -124,9 +124,11 @@ def make_empty_file_safe(file_path: str) -> None:
 def load_print_decorator(func: callable) -> callable:
     def wrapper(*args, **kwargs):
         file_path = args[0].file_path
+        print('-'*80)
         print(f"Loading file: {file_path}")
         data = func(*args, **kwargs)
         print(f"Finished loading file: {file_path}")
+        print('-'*80)
         return data
     return wrapper
 
@@ -134,9 +136,11 @@ def load_print_decorator(func: callable) -> callable:
 def save_print_decorator(func: callable) -> callable:
     def wrapper(*args, **kwargs):
         file_path = args[0].file_path
+        print('-' * 80)
         print(f"Saving to file: {file_path}")
         data = func(*args, **kwargs)
         print(f"Finished saving to file: {file_path}")
+        print('-' * 80)
         return data
     return wrapper
 

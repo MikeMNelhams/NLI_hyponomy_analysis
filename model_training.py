@@ -20,7 +20,7 @@ def main():
     validation_small_path = "data/snli_small/snli_small1_dev.jsonl"
 
     train_loader = SNLI_DataLoader_POS_Processed(train_path)
-    validation_loader = SNLI_DataLoader_POS_Processed(train_path)
+    validation_loader = SNLI_DataLoader_POS_Processed(validation_path)
 
     # word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     # word_vectors_0.load_memory()
@@ -42,7 +42,7 @@ def main():
     # mike_net.count_parameters()
     # mike_net.unlock()
     #
-    # mike_net.train(epochs=99, batch_size=512, print_every=1)
+    # mike_net.train(epochs=100, batch_size=512, print_every=1)
     # mike_net.plot_loss()
     # mike_net.plot_accuracy()
     # mike_net.test(train_loader)

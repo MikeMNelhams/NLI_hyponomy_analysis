@@ -119,8 +119,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
                                                         file_path=self._file_dir_path + "trigger_times.txt",
                                                         patience=self.hyper_parameters.patience,
                                                         mode=self.hyper_parameters.early_stopping_mode)
-            if self.early_stopping.trigger_times == self.hyper_parameters.patience:
-                raise ModelAlreadyTrainedError
 
     def unlock(self) -> None:
         self.__training_locked = False
@@ -128,13 +126,17 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
     def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), batch_loading_mode="sequential",
               print_every: int = 1) -> None:
+
+        if self.model_is_validating and self.early_stopping.trigger_times == self.hyper_parameters.patience:
+            raise ModelAlreadyTrainedError(self.model_save_path)
+
+        if self.__training_locked:
+            raise ModelAlreadyTrainedError(self.model_save_path)
+
         training_start_time = time.perf_counter()
 
         def batch_loader(x):
             return self.data_loader.load_batch(x, mode=batch_loading_mode)
-
-        if self.__training_locked:
-            raise ModelAlreadyTrainedError(self.model_save_path)
 
         number_of_iterations_per_epoch = self._number_of_iterations_per_epoch(batch_size=batch_size)
 
@@ -172,6 +174,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                     self.save_model_training()
 
                     return None
+                self.early_stopping.save_trigger_times()
 
             self.history.step(float(running_loss), running_accuracy, scores)
 
@@ -210,6 +213,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         loss.backward()
         self.optimizer.step()
         accuracy = self.accuracy(predictions, labels)
+
         return loss, accuracy
 
     def __validate(self, sampling_batch_size: int=256, criterion=nn.CrossEntropyLoss()) -> (float, float):
