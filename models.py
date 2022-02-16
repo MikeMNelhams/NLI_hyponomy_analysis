@@ -175,8 +175,10 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
                     return None
                 self.early_stopping.save_trigger_times()
+                self.validation_history.save()
 
             self.history.step(float(running_loss), running_accuracy, scores)
+            self.history.save()
 
         print('Finished Training.')
 
