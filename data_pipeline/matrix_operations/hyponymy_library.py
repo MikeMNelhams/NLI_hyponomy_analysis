@@ -65,32 +65,20 @@ def project(list_of_matrices, verb_operator=True, phrase_type='SV', tol=1e-8):
     if phrase_type == 'SV':
         noun, verb = list_of_matrices
         if verb_operator:
-            verb_sqrt = matrix.matrix_sqrt(verb)
-            matrix.assert_real_eigenvalues(verb_sqrt, tolerance=tol)
-            mat = verb_sqrt.dot(noun).dot(verb_sqrt)
+            mat = matrix.projection(verb, noun, tol=tol)
         else:
-            noun_sqrt = matrix.matrix_sqrt(noun)
-            matrix.assert_real_eigenvalues(noun_sqrt, tolerance=tol)
-            mat = noun_sqrt.dot(verb).dot(noun_sqrt)
+            mat = matrix.projection(noun, verb, tol=tol)
     elif phrase_type == 'VO':
         verb, noun = list_of_matrices
         if verb_operator:
-            verb_sqrt = matrix.matrix_sqrt(verb)
-            matrix.assert_real_eigenvalues(verb_sqrt, tolerance=tol)
-            mat = verb_sqrt.dot(noun).dot(verb_sqrt)
+            mat = matrix.projection(verb, noun, tol=tol)
         else:
-            noun_sqrt = matrix.matrix_sqrt(noun)
-            matrix.assert_real_eigenvalues(noun_sqrt, tolerance=tol)
-            mat = noun_sqrt.dot(verb).dot(noun_sqrt)
+            mat = matrix.projection(noun, verb, tol=tol)
     elif phrase_type == "SVO":
         noun1, verb, noun2 = list_of_matrices[0], list_of_matrices[1], list_of_matrices[2]
         if verb_operator:
-            verb_sqrt = matrix.matrix_sqrt(verb)
-            matrix.assert_real_eigenvalues(verb_sqrt, tolerance=tol)
-            mat = verb_sqrt.dot(noun2).dot(verb_sqrt)
-            mat_sqrt = matrix.matrix_sqrt(mat)
-            matrix.assert_real_eigenvalues(mat_sqrt, tolerance=tol)
-            mat = mat_sqrt.dot(noun1).dot(mat_sqrt)
+            mat = matrix.projection(verb, noun2, tol=tol)
+            mat = matrix.projection(mat, noun1, tol=tol)
         else:
             noun2_sqrt = matrix.matrix_sqrt(noun2)
             noun1_sqrt = matrix.matrix_sqrt(noun1)
@@ -220,6 +208,7 @@ def sum_addition(list_of_matrices):
         mat2 = (np.sum(mat)*list_of_matrices[0] + np.sum(list_of_matrices[0])*mat)/2
         mat2 = mat2/(dim**2)
         return mat2
+    raise ValueError
 
 
 def sum_n_diag_v(list_of_matrices, phrase_type='SV', normalisation='maxeig1'):
@@ -403,3 +392,10 @@ def calculate_roc_bootstraps(phrase_pairs, combined_phrases, phrase_type, roc_di
         else:
             roc_dict[(phrase_type, func_name)] = [metrics.roc_auc_score(sorted_true, sorted_calculated)]
     return roc_dict
+
+
+def mult(a: np.array, b: np.array) -> np.array:
+    return matrix.hadamard_product(a, b)
+
+def mmult(a: np.array, b: np.array) -> np.array:
+    return

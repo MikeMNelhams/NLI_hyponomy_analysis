@@ -124,8 +124,23 @@ class EntailmentModelBatch:
 
         self.__labels_encoding = self.__get_labels_encoding()
 
+        # For __iter__
+        self.index = 0
+
     def __str__(self):
         return str(self.data)
+
+    def __iter__(self):
+        self.index = 0
+        return self
+
+    def __next__(self):
+        if self.index < self.data.shape[0]:
+            result = self.data[self.index, :]
+            self.index += 1
+            return result
+        else:
+            raise StopIteration
 
     @property
     def word_delimiter(self):

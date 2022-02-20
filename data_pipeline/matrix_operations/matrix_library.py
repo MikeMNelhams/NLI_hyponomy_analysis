@@ -57,6 +57,14 @@ def compose(list_of_matrices, func: callable, norm_type=None, **kwargs) -> np.ar
     return matrix
 
 
+def projection(a: np.array, b: np.array, tol=1e-8) -> np.array:
+    """ a is outer, b is middle"""
+    verb_sqrt = matrix_sqrt(a)
+    assert_real_eigenvalues(verb_sqrt, tolerance=tol)
+    mat = verb_sqrt.dot(b).dot(verb_sqrt)
+    return mat
+
+
 def normalize(a, normalization: str) -> np.array:
     """ matrix normalization """
     normalizations = ['trace1', 'maxeig1', None]
@@ -120,6 +128,10 @@ def diag(list_of_matrices):
     for m in list_of_matrices[1:]:
         mat = mat.dot(np.diag(np.diag(m)))
     return mat
+
+
+def hadamard_product(a: np.array, b: np.array) -> np.array:
+    return np.multiply(a, b)
 
 
 def main():

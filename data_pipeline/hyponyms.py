@@ -11,6 +11,8 @@ from NLI_hyponomy_analysis.data_pipeline.file_operations import DictWriter, list
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed, SNLI_DataLoader_Unclean
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Processed
 
+import math
+
 
 class KS:
     def __init__(self, ks_file_path: str):
@@ -66,7 +68,7 @@ class Hyponyms(DictWriter):
         for word in word_list:
             count += 1
             if count % 100 == 0:
-                print("Got the hyponyms of {0} words out of {1}".format(count, len(word_list)))
+                print(f"Got the hyponyms of {0} words out of {1}".format(count, len(word_list)))
             # get synsets of word
             synset_list = wn.synsets(word, pos=pos)
             if len(synset_list) > 0:
@@ -237,6 +239,16 @@ class DenseHyponymMatrices(DictWriter):
     def flatten(self) -> None:
         self.density_matrices = {key: value.flatten() for key, value in self.density_matrices.items()}
         return None
+
+    def square(self) -> None:
+        shape = list(self.density_matrices.values())[0].shape
+        assert len(shape) == 1
+
+        square_size = int(math.sqrt(shape[0]))
+        assert square_size ** 2, TypeError
+
+        self.density_matrices = {key: value.reshape((square_size, square_size))
+                                 for key, value in self.density_matrices.items()}
 
     def generate_missing_vectors(self, words: list, glove_vectors, pad_value=0):
         padding_vector = np.array([pad_value for _ in range(self.d_emb)])

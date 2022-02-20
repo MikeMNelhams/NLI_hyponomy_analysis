@@ -1,8 +1,11 @@
 import json
+import csv
 import os
 import pickle
 
-from typing import List
+from typing import List, Iterable, Optional
+
+import pandas as pd
 
 
 class InvalidPathError(Exception):
@@ -312,6 +315,81 @@ class TextLogger:
         with open(self.file_path, "w") as text_file:
             text_file.writelines('\n'.join(lines))
             text_file.write('\n')
+        return None
+
+
+class CSV_Writer:
+    def __init__(self, file_path: str, header=Optional[Iterable], delimiter='|'):
+        self.file_path = file_path
+        self.header = header
+        self.delimiter = delimiter
+
+        assert file_path_is_of_extension(self.file_path, '.csv'), TypeError
+
+    @property
+    def file_exists(self):
+        return is_file(self.file_path)
+
+    @property
+    def file_empty(self):
+        return self.file_exists and os.stat(self.file_path).st_size == 0
+
+    @load_print_decorator
+    def load_safe(self) -> List:
+        if not self.file_exists:
+            return None
+
+        return self.load
+
+    @save_print_decorator
+    def save(self, data: Iterable) -> None:
+        assert isinstance(data, Iterable), TypeError
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".csv":
+            self.__save(data)
+        print(f"Finished saving to file: {self.file_path}")
+        return None
+
+    def write_dataframe(self, data: pd.DataFrame):
+        data.to_csv(self.file_path, sep=self.delimiter, index=False, header=True)
+        return None
+
+    @load_print_decorator
+    def load(self) -> pd.DataFrame:
+        file_extension = file_path_extension(self.file_path)
+        if file_extension == ".csv":
+            return self.__load()
+        raise InvalidPathError
+
+    def append_lines(self, lines: list) -> None:
+        if not self.file_exists or self.file_empty:
+            self.__save(lines)
+        else:
+            with open(self.file_path, 'a') as file:
+                for line in lines:
+                    file.write(self.delimiter.join(line) + '\n')
+        return None
+
+    def remove_last_line(self) -> None:
+        with open(self.file_path, 'r') as text_file:
+            content = text_file.readlines()
+
+        with open(self.file_path, 'w') as text_file:
+            text_file.writelines(content[:-1])
+
+        return None
+
+    def __load(self) -> pd.DataFrame:
+        data = pd.read_csv(self.file_path, sep=self.delimiter)
+        return data
+
+    def __save(self, lines: list) -> None:
+
+        print(f"HEADERS: \'{self.header}\'")
+
+        with open(self.file_path, 'w', newline='') as file:
+            csv_writer = csv.writer(file, delimiter=self.delimiter)
+            csv_writer.writerows([list(self.header), *lines])
         return None
 
 
