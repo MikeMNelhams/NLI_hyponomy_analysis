@@ -178,7 +178,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 self.validation_history.save()
 
             self.history.step(float(running_loss), running_accuracy, scores)
-            self.history.save()
+            self.history.write()
 
         print('Finished Training.')
 

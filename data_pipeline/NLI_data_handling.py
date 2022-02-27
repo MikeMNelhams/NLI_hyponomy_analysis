@@ -326,8 +326,8 @@ class EntailmentModelBatch:
 
 
 class DictBatch(Batch):
-    sentence_fields = ('sentence1', 'sentence2', 'sentence{1,2}_parse', 'sentence{1,2}_binary_parse', "sentence1_parse",
-                       "sentence2_parse")
+    sentence_fields = ("sentence1", "sentence2", "sentence{1,2}_parse", "sentence{1,2}_binary_parse", "sentence1_parse",
+                       "sentence2_parse", "sentence1_binary_parse", "sentence2_binary_parse")
 
     def __init__(self, list_of_dicts: List[dict], max_sequence_len):
         super().__init__(list_of_dicts)

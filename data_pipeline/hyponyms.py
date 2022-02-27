@@ -232,6 +232,14 @@ class DenseHyponymMatrices(DictWriter):
         word = self.density_matrices.get(word, None)
         return word
 
+    def safe_lookup(self, word: str) -> np.array:
+        vector = self.lookup(word)
+
+        if np.all(vector == 0):
+            return None
+
+        return vector
+
     def remove_all_except(self, words: list) -> None:
         self.density_matrices = {key: value for key, value in self.density_matrices.items() if key not in words}
         return None

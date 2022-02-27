@@ -397,5 +397,10 @@ def calculate_roc_bootstraps(phrase_pairs, combined_phrases, phrase_type, roc_di
 def mult(a: np.array, b: np.array) -> np.array:
     return matrix.hadamard_product(a, b)
 
-def mmult(a: np.array, b: np.array) -> np.array:
-    return
+
+def mmult1(a: np.array, b: np.array) -> np.array:
+    return matrix.projection(a, b)
+
+
+def mmult2(a: np.array, b: np.array) -> np.array:
+    return matrix.projection(b, a)

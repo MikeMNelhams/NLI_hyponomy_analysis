@@ -2,8 +2,9 @@ import json
 import csv
 import os
 import pickle
+import warnings
 
-from typing import List, Iterable, Optional
+from typing import List, Iterable, Any
 
 import pandas as pd
 
@@ -67,10 +68,10 @@ def is_file(file_path: str) -> bool:
     return True
 
 
-def is_dir(file_path: str) -> bool:
-    if len(file_path) == 0:
+def is_dir(dir_path: str) -> bool:
+    if len(dir_path) == 0:
         return False
-    return os.path.isdir(file_path)
+    return os.path.isdir(dir_path)
 
 
 def make_dir(file_path: str) -> None:
@@ -125,7 +126,14 @@ def make_empty_file_safe(file_path: str) -> None:
 
 
 def load_print_decorator(func: callable) -> callable:
-    def wrapper(*args, **kwargs):
+    type_return = Any
+
+    try:
+        type_return = func.__annotations__["return"]
+    except KeyError:
+        pass
+
+    def wrapper(*args, **kwargs) -> type_return:
         file_path = args[0].file_path
         print('-'*80)
         print(f"Loading file: {file_path}")
@@ -137,7 +145,14 @@ def load_print_decorator(func: callable) -> callable:
 
 
 def save_print_decorator(func: callable) -> callable:
-    def wrapper(*args, **kwargs):
+    type_return = Any
+
+    try:
+        type_return = func.__annotations__["return"]
+    except KeyError:
+        pass
+
+    def wrapper(*args, **kwargs) -> type_return:
         file_path = args[0].file_path
         print('-' * 80)
         print(f"Saving to file: {file_path}")
@@ -319,12 +334,20 @@ class TextLogger:
 
 
 class CSV_Writer:
-    def __init__(self, file_path: str, header=Optional[Iterable], delimiter='|'):
+    def __init__(self, file_path: str, header: Iterable=None, delimiter='|'):
         self.file_path = file_path
+
         self.header = header
+        # if self.file_exists:
+        #     self.header = self.load_as_list(header=True)[0]
+
         self.delimiter = delimiter
 
-        assert file_path_is_of_extension(self.file_path, '.csv'), TypeError
+        self.__assert_is_csv(file_path)
+
+    def __len__(self):
+        # Remove 1, due to the empty line @ EOF.
+        return count_file_lines(self.file_path) - 1
 
     @property
     def file_exists(self):
@@ -335,14 +358,21 @@ class CSV_Writer:
         return self.file_exists and os.stat(self.file_path).st_size == 0
 
     @load_print_decorator
-    def load_safe(self) -> List:
-        if not self.file_exists:
-            return None
+    def load(self, safe=True) -> pd.DataFrame:
+        if safe and not self.file_exists:
+            raise FileExistsError
 
-        return self.load
+        return self.__load()
+
+    @load_print_decorator
+    def load_as_list(self, safe=True, header=False, as_float=False) -> list:
+        if safe and not self.file_exists:
+            raise FileExistsError
+
+        return self.__load_as_list(header=header, as_float=as_float)
 
     @save_print_decorator
-    def save(self, data: Iterable) -> None:
+    def write(self, data: Iterable) -> None:
         assert isinstance(data, Iterable), TypeError
         file_extension = file_path_extension(self.file_path)
         if file_extension == ".csv":
@@ -354,23 +384,23 @@ class CSV_Writer:
         data.to_csv(self.file_path, sep=self.delimiter, index=False, header=True)
         return None
 
-    @load_print_decorator
-    def load(self) -> pd.DataFrame:
-        file_extension = file_path_extension(self.file_path)
-        if file_extension == ".csv":
-            return self.__load()
-        raise InvalidPathError
-
     def append_lines(self, lines: list) -> None:
         if not self.file_exists or self.file_empty:
             self.__save(lines)
         else:
+            if self.__lines_are_empty(lines):
+                return None
+
             with open(self.file_path, 'a') as file:
                 for line in lines:
                     file.write(self.delimiter.join(line) + '\n')
         return None
 
     def remove_last_line(self) -> None:
+        if len(self) == 0:
+            warnings.warn("File is empty, cannot remove empty line")
+            return None
+
         with open(self.file_path, 'r') as text_file:
             content = text_file.readlines()
 
@@ -383,14 +413,40 @@ class CSV_Writer:
         data = pd.read_csv(self.file_path, sep=self.delimiter)
         return data
 
-    def __save(self, lines: list) -> None:
+    def __load_as_list(self, header=False, as_float=False) -> list:
+        with open(self.file_path, 'r') as file:
+            csv_reader = csv.reader(file, delimiter=self.delimiter)
+            if not header:
+                next(csv_reader)
 
+            if as_float:
+                data = [[float(element) for element in row] for row in csv_reader]
+            else:
+                data = [row for row in csv_reader]
+        return data
+
+    def __save(self, lines: list) -> None:
         print(f"HEADERS: \'{self.header}\'")
+
+        if self.__lines_are_empty(lines):
+            return None
 
         with open(self.file_path, 'w', newline='') as file:
             csv_writer = csv.writer(file, delimiter=self.delimiter)
             csv_writer.writerows([list(self.header), *lines])
         return None
+
+    @staticmethod
+    def __assert_is_csv(file_path) -> None:
+        assert file_path_is_of_extension(file_path, '.csv'), InvalidPathError
+        return None
+
+    @staticmethod
+    def __lines_are_empty(lines: List[list]) -> bool:
+        if sum([1 for line in lines if not line]) > 0:
+            warnings.warn("Do not try to write an empty list.")
+            return True
+        return False
 
 
 if __name__ == "__main__":

@@ -248,7 +248,7 @@ class MetricEvaluator:
 
 
 class History:
-    """ Uses a csv file to save its loss and accuracy"""
+    """ Uses a csv file to write its loss and accuracy"""
     def __init__(self, file_path: str, decimal_places: int = 4, label="training"):
         self.__file_path = file_path
         self.__decimal_places = decimal_places

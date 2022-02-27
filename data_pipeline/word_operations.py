@@ -29,6 +29,119 @@ def find_all_pos_tags(sentence: str) -> List[str]:
     return tags
 
 
+def pos_string_to_literal(pos_string) -> str:
+    string_literal = ''
+    for i in range(len(pos_string) - 1):
+        char0 = pos_string[i]
+        char1 = pos_string[i + 1]
+        if char0 == '(':
+            string_literal += "(\""
+        elif char0 == ' ' and char1 != '(' and char1 != ')':
+            string_literal += " \""
+        elif char1 == ' ' and char0 != '(' and char0 != ')':
+            string_literal += f"{char0}\""
+        elif char1 == ')' and char0 != '(' and char0 != ')':
+            string_literal += f"{char0}\""
+        else:
+            string_literal += char0
+
+    return string_literal
+
+
+def pos_string_to_tokens_list(pos_string) -> list:
+    """ Time O(n). Space O(n), where n is len(string)"""
+    token_list = []
+
+    i = 0
+    while i < len(pos_string):
+        char = pos_string[i]
+        if char == ' ':
+            pass
+        elif not __is_pos_sep(char):
+            end_idx = i + 1
+
+            while True:
+                end_char = pos_string[end_idx]
+                if __is_pos_sep(end_char):
+                    break
+                elif end_char == ' ':
+                    break
+                end_idx += 1
+
+            word = pos_string[i: end_idx]
+            token_list.append(word)
+
+            i = end_idx
+        else:
+            token_list.append(char)
+        i += 1
+
+    return token_list
+
+
+def pos_string_to_tokens_list_with_space(pos_string) -> list:
+    """ Time O(n). Space O(n), where n is len(string)"""
+    token_list = []
+
+    def case1(token_p, token_n):
+        return token_p != ' ' and token_n != ')'
+
+    def case2(token_p, token_n):
+        return not token_p == '(' or __is_non_alphanumeric_token(token_n)
+
+    def case3(token_p, token_n):
+        return not (token_p == '(' and token_n == '(')
+
+    i = 0
+
+    while i < len(pos_string):
+        char = pos_string[i]
+        if not __is_non_alphanumeric_token(char):
+            end_idx = i + 1
+
+            while True:
+                end_char = pos_string[end_idx]
+                if __is_pos_sep(end_char):
+                    break
+                elif end_char == ' ':
+                    break
+                end_idx += 1
+
+            word = pos_string[i: end_idx]
+            token_list.append(word)
+
+            i = end_idx - 1
+        else:
+            token_list.append(char)
+        i += 1
+
+    # Need to remove the double spacings and spaces that are next to the brackets.
+    corrected_token_list = [token_list[0]]
+
+    for i in range(1, len(token_list) - 1):
+        current_token = token_list[i]
+        if current_token == ' ':
+            previous_token = token_list[i-1]
+            next_token = token_list[i+1]
+            if case1(previous_token, next_token) and \
+                    case2(previous_token, next_token) and case3(previous_token, next_token):
+                corrected_token_list.append(current_token)
+        else:
+            corrected_token_list.append(current_token)
+
+    corrected_token_list.append(token_list[-1])
+
+    return corrected_token_list
+
+
+def __is_pos_sep(char) -> bool:
+    return char == '(' or char == ')'
+
+
+def __is_non_alphanumeric_token(char) -> bool:
+    return __is_pos_sep(char) or char == ' '
+
+
 def replace_ampersand(word: str) -> str:
     return word.replace('&', 'and')
 
