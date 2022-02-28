@@ -316,6 +316,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
     @staticmethod
     def __assert_valid_batch_load_config(config: str) -> None:
         valid_configs = StaticEntailmentNet.batch_load_configs
-        error_message = f"Invalid batch load config: {config}. Try one of {valid_configs}"
+        error_message = f"Invalid batch load_as_dataframe config: {config}. Try one of {valid_configs}"
         assert config in valid_configs, Exception(error_message)
         return None

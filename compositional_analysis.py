@@ -148,10 +148,10 @@ def pos_batch(data_path: str, batch_size: int=256):
         data_writer.append_lines(k_e)
 
 
-def scatter(data_path):
+def scatter(data_path: str):
     data_loader = file_op.CSV_Writer(data_path, delimiter=',')
 
-    data = data_loader.load()
+    data = data_loader.load_as_dataframe()
 
     values = data["k_e"].to_list()
     labels = data["label"].to_list()
@@ -196,7 +196,27 @@ def scatter(data_path):
     plt.show()
 
 
+def test_ks2016(data_path: str):
+    load_dotenv()  # Path to the glove data directory -> HOME="..."
+    data_loader = SNLI_DataLoader_Unclean(data_path)
+
+    word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors_0.load_memory()
+    embed.remove_all_non_unique(word_vectors_0, data_loader.unique_words)
+
+    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
+    word_vectors.remove_all_except(data_loader.unique_words)
+    word_vectors.flatten()
+    word_vectors.generate_missing_vectors(data_loader.unique_words, word_vectors_0)
+    word_vectors.square()
+
+    ks_loader = file_op.CSV_Writer("data/KS2016/KS2016-SV.csv", delimiter=',')
+
+
+
 if __name__ == "__main__":
     # ke_multiply("data/snli_1.0/snli_1.0_train.jsonl")
     # scatter("data/compositional_analysis/train/k_e/mult.csv")
-    pos_batch("data/snli_1.0/snli_1.0_train.jsonl")
+    # pos_batch("data/snli_1.0/snli_1.0_train.jsonl")
+    # scatter("data/compositional_analysis/train/k_e/pos_tree.csv")
+    pass

@@ -523,7 +523,7 @@ class NLI_DataLoader_abc(ABC):
         return DictBatch(content, max_sequence_len=self.max_words_in_sentence_length)
 
     def load_random(self, batch_size: int=256) -> DictBatch:
-        """ O(File_size) load random lines"""
+        """ O(File_size) load_as_dataframe random lines"""
         # Uses reservoir sampling.
         # There is actually a FASTER way to do this using more complicated sampling:
         #   https://dl.acm.org/doi/pdf/10.1145/355900.355907
@@ -692,7 +692,7 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
         return batch_sizes
 
     def __process_and_save_data(self, processing_type, processing_batch_size: int = 256) -> None:
-        """ Called once at first instantiation. Slow, slow overhead. Reduces load time massively."""
+        """ Called once at first instantiation. Slow, slow overhead. Reduces load_as_dataframe time massively."""
 
         unclean_data_loader = SNLI_DataLoader_Unclean(self.file_path)
 
@@ -760,7 +760,7 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
         return batch_sizes
 
     def __process_and_save_data(self, processing_batch_size: int = 1_000):
-        """ Called once at first instantiation. Slow, slow overhead. Reduces load time massively."""
+        """ Called once at first instantiation. Slow, slow overhead. Reduces load_as_dataframe time massively."""
 
         unclean_data_loader = SNLI_DataLoader_Unclean(self.file_path)
 

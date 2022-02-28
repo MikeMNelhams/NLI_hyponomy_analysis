@@ -335,15 +335,12 @@ class TextLogger:
 
 class CSV_Writer:
     def __init__(self, file_path: str, header: Iterable=None, delimiter='|'):
+        self.__assert_is_csv(file_path)
         self.file_path = file_path
-
         self.header = header
-        # if self.file_exists:
-        #     self.header = self.load_as_list(header=True)[0]
+        self._batch_index = 0
 
         self.delimiter = delimiter
-
-        self.__assert_is_csv(file_path)
 
     def __len__(self):
         # Remove 1, due to the empty line @ EOF.
@@ -358,18 +355,88 @@ class CSV_Writer:
         return self.file_exists and os.stat(self.file_path).st_size == 0
 
     @load_print_decorator
-    def load(self, safe=True) -> pd.DataFrame:
+    def load_line(self, line_number: int) -> list:
+        """ For efficiently loading a specific line number """
+
+        self.__assert_valid_line_number(line_number)
+
+        line_increment = 1 if self.header is not None else 0
+
+        with open(self.file_path, "r") as file:
+            content = [self.__parse_row(x) for i, x in enumerate(file) if i == line_number + line_increment]
+
+        return content
+
+    @load_print_decorator
+    def load_range(self, start_index: int, end_index: int) -> List[list]:
+        if start_index == end_index:
+            return self.load_line(start_index)
+
+        line_increment = 1 if self.header is not None else 0
+
+        self.__assert_valid_line_number(start_index, end_index - 1)
+        print("RANGING:", start_index, end_index)
+        # Makes use of early stopping AND known list memory allocation.
+        with open(self.file_path, "r") as file:
+            lower_limit = start_index + line_increment
+            upper_limit = end_index + line_increment
+            content = [[] for _ in range(start_index, end_index)]
+            for i, x in enumerate(file):
+                if i >= upper_limit:
+                    break
+                if i >= lower_limit:
+                    content[i - line_increment - start_index] = self.__parse_row(x)
+
+        return content
+
+    @load_print_decorator
+    def load_sequential(self, batch_size: int, from_start=False) -> List[List]:
+        if from_start:
+            self._batch_index = 0
+
+        line_increment = 1 if self.header is not None else 0
+
+        if batch_size > len(self) - line_increment:
+            raise ValueError
+
+        start_index = self._batch_index
+        end_index = self._batch_index + batch_size
+
+        overlap = False
+        if end_index > len(self) - line_increment:
+            overlap = True
+            end_index = len(self) - line_increment
+
+        content1 = self.load_range(start_index, end_index)
+
+        if overlap:
+            end_index_wrapped = batch_size - (len(self) - line_increment - start_index)
+
+            content2 = self.load_range(0, end_index_wrapped)
+
+            self._batch_index = end_index_wrapped
+            return content1 + content2
+
+        if end_index >= len(self) - line_increment:
+            self._batch_index = 0
+        else:
+            self._batch_index = end_index
+
+        return content1
+
+    @load_print_decorator
+    def load_as_dataframe(self, safe=True) -> pd.DataFrame:
         if safe and not self.file_exists:
             raise FileExistsError
 
         return self.__load()
 
     @load_print_decorator
-    def load_as_list(self, safe=True, header=False, as_float=False) -> list:
+    def load_all_as_list(self, safe=True, as_float=False) -> list:
         if safe and not self.file_exists:
             raise FileExistsError
 
-        return self.__load_as_list(header=header, as_float=as_float)
+        return self.__load_as_list(as_float=as_float)
 
     @save_print_decorator
     def write(self, data: Iterable) -> None:
@@ -381,6 +448,8 @@ class CSV_Writer:
         return None
 
     def write_dataframe(self, data: pd.DataFrame):
+        data_header = data.columns.values.tolist()
+        self.header = data_header
         data.to_csv(self.file_path, sep=self.delimiter, index=False, header=True)
         return None
 
@@ -413,10 +482,10 @@ class CSV_Writer:
         data = pd.read_csv(self.file_path, sep=self.delimiter)
         return data
 
-    def __load_as_list(self, header=False, as_float=False) -> list:
+    def __load_as_list(self, as_float=False) -> list:
         with open(self.file_path, 'r') as file:
             csv_reader = csv.reader(file, delimiter=self.delimiter)
-            if not header:
+            if self.header is not None:
                 next(csv_reader)
 
             if as_float:
@@ -426,14 +495,16 @@ class CSV_Writer:
         return data
 
     def __save(self, lines: list) -> None:
-        print(f"HEADERS: \'{self.header}\'")
-
         if self.__lines_are_empty(lines):
             return None
 
+        rows_to_write = [*lines]
+        if self.header is not None:
+            rows_to_write = [list(self.header)] + rows_to_write
+
         with open(self.file_path, 'w', newline='') as file:
             csv_writer = csv.writer(file, delimiter=self.delimiter)
-            csv_writer.writerows([list(self.header), *lines])
+            csv_writer.writerows(rows_to_write)
         return None
 
     @staticmethod
@@ -447,6 +518,20 @@ class CSV_Writer:
             warnings.warn("Do not try to write an empty list.")
             return True
         return False
+
+    def __assert_valid_line_number(self, *line_numbers: int) -> None:
+        assert not self.file_empty and self.file_exists, FileNotFoundError
+        maximum_line_number =  len(self) - 1 if self.header is None else len(self) - 2
+        print("LENGTH:", len(self))
+        print("MAX LINE NUMBER:", maximum_line_number)
+        for line_number in line_numbers:
+            if line_number < 0 or line_number > maximum_line_number:
+                print(f'Invalid line {line_number}')
+                raise ValueError
+        return None
+
+    def __parse_row(self, row: str) -> list:
+        return row[:-1].split(self.delimiter)
 
 
 if __name__ == "__main__":

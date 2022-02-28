@@ -16,8 +16,9 @@ class ChildAlreadyExistsError(Exception):
 
 
 class BinaryParseTree:
-    ignore_labels = ['ls', 'pos', '.']
-    hadamard_labels = ['dt', 'ex', 'cd', 'md', 'pdt', 'prp', 'prp$', 'rp', 'uh', 'to']
+    ignore_labels = ['ls', 'pos', '.', 'dt', ',']
+    hadamard_labels = ['ex', 'cd', 'md', 'pdt', 'prp', 'prp$', 'rp', 'uh', 'to']
+    adjective_labels = ['in', 'jj']
 
     def __init__(self, binary_parse_string, word_vectors):
         self.data = self.pos_string_to_binary_tree(binary_parse_string)

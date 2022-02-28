@@ -2,7 +2,7 @@ import os
 import unittest
 
 import pandas as pd
-
+import numpy as np
 import file_operations as file_op
 
 
@@ -221,7 +221,7 @@ class TestCSV_Writer(unittest.TestCase):
 
             self.assertEqual(file_op.count_file_lines(self.test_path), 3)
 
-            data_loaded = csv_writer.load_as_list()
+            data_loaded = csv_writer.load_all_as_list()
 
             self.assertEqual(data, data_loaded)
 
@@ -235,22 +235,22 @@ class TestCSV_Writer(unittest.TestCase):
 
             self.assertEqual(file_op.count_file_lines(self.test_path), 4)
 
-            data_loaded = csv_writer.load_as_list()
+            data_loaded = csv_writer.load_all_as_list()
 
             self.assertEqual(data, data_loaded)
 
     def test_create_file_from_empty_dataframe(self):
         data = pd.DataFrame.from_dict({"col1": [0, 0], "col2": [1, 1]})
 
-        # with TestTeardownFile(self.test_path):
-        csv_writer = file_op.CSV_Writer(self.test_path, header=("col1", "col2"))
-        csv_writer.write_dataframe(data)
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path, header=("col1", "col2"))
+            csv_writer.write_dataframe(data)
 
-        correct_data = [[str(i) for i in range(2)] for _ in range(2)]
-        loaded_data = csv_writer.load_as_list()
+            correct_data = [[str(i) for i in range(2)] for _ in range(2)]
+            loaded_data = csv_writer.load_all_as_list()
 
-        self.assertEqual(file_op.count_file_lines(self.test_path), 4)
-        self.assertEqual(correct_data, loaded_data)
+            self.assertEqual(file_op.count_file_lines(self.test_path), 4)
+            self.assertEqual(correct_data, loaded_data)
 
     def test_append_lines(self):
         data_initial = [[str(i) for i in range(2)] for _ in range(2)]
@@ -263,9 +263,9 @@ class TestCSV_Writer(unittest.TestCase):
             csv_writer.append_lines(data_initial)
             csv_writer.append_lines(data_initial)
 
-            loaded_data = csv_writer.load_as_list()
-            correct_data = data_initial + data_initial*2
-
+            loaded_data = csv_writer.load_all_as_list()
+            correct_data = data_initial*3
+            print(correct_data)
             self.assertEqual(loaded_data, correct_data)
 
     def test_append_empty_lines_does_nothing(self):
@@ -281,7 +281,7 @@ class TestCSV_Writer(unittest.TestCase):
             csv_writer.append_lines(data)
             csv_writer.append_lines(data)
 
-            loaded_data = csv_writer.load_as_list()
+            loaded_data = csv_writer.load_all_as_list()
             self.assertEqual(loaded_data, data_initial)
             self.assertEqual(file_op.count_file_lines(self.test_path), 4)
 
@@ -310,6 +310,141 @@ class TestCSV_Writer(unittest.TestCase):
             csv_writer.write(data)
 
             self.assertFalse(file_op.is_file(self.test_path))
+
+    def test_no_header_csv_write_and_append(self):
+        data_initial = [[str(i) for i in range(2)] for _ in range(2)]
+
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path)
+            csv_writer.write(data_initial)
+
+            loaded_data = csv_writer.load_all_as_list()
+            self.assertEqual(data_initial, loaded_data)
+            self.assertTrue(file_op.count_file_lines(self.test_path), 3)
+
+            csv_writer.append_lines(data_initial)
+            csv_writer.append_lines(data_initial)
+            loaded_data = csv_writer.load_all_as_list()
+            self.assertEqual(data_initial*3, loaded_data)
+            self.assertTrue(file_op.count_file_lines(self.test_path), 5)
+
+    def test_write_dataframe_adds_header(self):
+        data = pd.DataFrame.from_dict({"col1": [0, 0], "col2": [1, 1]})
+
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path)
+            csv_writer.write_dataframe(data)
+
+            correct_data = [[str(i) for i in range(2)] for _ in range(2)]
+            loaded_data = csv_writer.load_all_as_list()
+
+            self.assertEqual(file_op.count_file_lines(self.test_path), 4)
+            self.assertEqual(correct_data, loaded_data)
+
+    def test_load_line_with_header(self):
+        data_initial = [[str(i) for i in range(2)] for _ in range(2)]
+        header = ("col1", "col2")
+
+        # with TestTeardownFile(self.test_path):
+        csv_writer = file_op.CSV_Writer(self.test_path, header)
+        csv_writer.write(data_initial)
+
+        with self.assertRaises(ValueError):
+            csv_writer.load_line(2)
+
+        loaded_line1 = csv_writer.load_line(0)
+        loaded_line2 = csv_writer.load_line(1)
+
+        self.assertEqual(loaded_line1, [data_initial[0]])
+        self.assertEqual(loaded_line2, [data_initial[1]])
+
+    def test_load_line_without_header(self):
+        data_initial = [[str(i) for i in range(2)] for _ in range(2)]
+
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path)
+            csv_writer.write(data_initial)
+
+            with self.assertRaises(ValueError):
+                csv_writer.load_line(2)
+
+            loaded_line1 = csv_writer.load_line(0)
+            loaded_line2 = csv_writer.load_line(1)
+
+            self.assertEqual(loaded_line1, [data_initial[0]])
+            self.assertEqual(loaded_line2, [data_initial[1]])
+
+    def test_load_range_with_header(self):
+        data_initial = [[str(i) for i in range(2)] for _ in range(3)]
+        header = ("col1", "col2")
+
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path, header)
+            csv_writer.write(data_initial)
+
+            with self.assertRaises(ValueError):
+                csv_writer.load_range(0, 4)
+
+            loaded_range = csv_writer.load_range(0, 3)
+
+            self.assertEqual(data_initial, loaded_range)
+
+    def test_load_range_without_header(self):
+        data_initial = [[str(i) for i in range(2)] for _ in range(3)]
+
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path)
+            csv_writer.write(data_initial)
+
+            with self.assertRaises(ValueError):
+                csv_writer.load_range(0, 4)
+
+            loaded_range = csv_writer.load_range(0, 3)
+
+            self.assertEqual(data_initial, loaded_range)
+
+    def test_load_sequential_without_header(self):
+        data_initial0 = [[str(i) for i in range(2)] for _ in range(2)]
+        data_initial1 = [['1', '2'] for _ in range(2)]
+        data_initial = data_initial0 + data_initial1
+
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path)
+            csv_writer.write(data_initial)
+
+            loaded_data0 = csv_writer.load_sequential(2)
+            loaded_data1 = csv_writer.load_sequential(2)
+            loaded_data2 = csv_writer.load_sequential(1)
+
+            self.assertEqual(loaded_data0, data_initial0)
+            self.assertEqual(loaded_data1, data_initial1)
+            self.assertEqual(loaded_data2, [['0', '1']])
+
+    def test_load_sequential_with_header(self):
+        data_initial0 = [[str(i) for i in range(2)] for _ in range(2)]
+        data_initial1 = [['1', '2'] for _ in range(2)]
+        data_initial = data_initial0 + data_initial1
+
+        header = ("col1", "col2")
+
+        with TestTeardownFile(self.test_path):
+            csv_writer = file_op.CSV_Writer(self.test_path, header=header)
+            csv_writer.write(data_initial)
+
+            loaded_data0 = csv_writer.load_sequential(2)
+            loaded_data1 = csv_writer.load_sequential(2)
+            loaded_data2 = csv_writer.load_sequential(2)
+            loaded_data3 = csv_writer.load_sequential(2)
+            loaded_data4 = csv_writer.load_sequential(1)
+            loaded_data5 = csv_writer.load_sequential(2)
+
+            self.assertEqual(csv_writer._batch_index, 3)
+            self.assertEqual(loaded_data0, data_initial0)
+            self.assertEqual(loaded_data1, data_initial1)
+            self.assertEqual(loaded_data2, data_initial0)
+            self.assertEqual(loaded_data3, data_initial1)
+            self.assertEqual(loaded_data4, [['0', '1']])
+            self.assertEqual(loaded_data5, [['0', '1'], ['1', '2']])
 
 
 if __name__ == '__main__':
