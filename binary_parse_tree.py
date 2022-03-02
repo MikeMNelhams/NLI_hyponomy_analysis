@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
 
 from nltk import Tree
@@ -28,6 +27,37 @@ class BinaryParseTree:
     def __repr__(self):
         return self.data.__repr__()
 
+    def evaluate(self) -> None:
+        self.data = self.__evaluate(self.data)
+        return None
+
+    def tree_to_binary(self, tree):
+        """
+            Recursively turn a tree into a binary tree.
+            """
+        if isinstance(tree, str):
+            return tree
+        elif len(tree) == 1:
+            return self.tree_to_binary(tree[0])
+        else:
+            label = tree.label()
+            return reduce(lambda x, y: Tree(label, (self.tree_to_binary(x), self.tree_to_binary(y))), tree)
+
+    @classmethod
+    def from_untagged_sentence(cls, sentence: str, word_vectors, delimiter=' ', tags=None):
+        if '(' not in sentence:
+            output = BinaryParseTree('()', word_vectors)
+            leaves = sentence.split(delimiter)
+            if tags is None:
+                leaves = [Tree('', [leaf]) for leaf in leaves]
+            else:
+                assert len(tags) == len(leaves), TypeError
+                leaves = [Tree(tag, [leaf]) for tag, leaf in zip(tags, leaves)]
+            output.data = Tree("Root", leaves)
+            return output
+
+        return BinaryParseTree(sentence, word_vectors)
+
     def __binary_operation(self, label1: str, label2: str) -> Callable[[np.array, np.array], np.array]:
         if label1 in self.ignore_labels:
             if label2 in self.ignore_labels:
@@ -45,12 +75,16 @@ class BinaryParseTree:
 
     @staticmethod
     def __is_verb_label(label: str):
+        if label == '':
+            return False
         if label[0] == 'v':
             return True
         return False
 
     @staticmethod
     def __is_noun_label(label: str):
+        if label == '':
+            return False
         if label[0] == 'n':
             return True
         if label == 'wp':
@@ -97,10 +131,6 @@ class BinaryParseTree:
                 return True
         return False
 
-    def evaluate(self) -> None:
-        self.data = self.__evaluate(self.data)
-        return None
-
     def __evaluate(self, tree: Tree):
         """
         We maintain a stack of parents.
@@ -125,17 +155,7 @@ class BinaryParseTree:
 
         return self.__evaluate_greater_than_2(tree_list, tree.label())
 
-    def tree_to_binary(self, tree):
-        """
-            Recursively turn a tree into a binary tree.
-            """
-        if isinstance(tree, str):
-            return tree
-        elif len(tree) == 1:
-            return self.tree_to_binary(tree[0])
-        else:
-            label = tree.label()
-            return reduce(lambda x, y: Tree(label, (self.tree_to_binary(x), self.tree_to_binary(y))), tree)
+
 
     @staticmethod
     def pos_string_to_binary_tree(pos_string: str):
@@ -143,51 +163,8 @@ class BinaryParseTree:
         return parsed_tree
 
 
-class Node:
-    def __init__(self, data):
-        self.left = None
-        self.right = None
-        self.data = data
-
-    def __repr__(self):
-        output_str = "-"*10 + f"Data: {self.data}, \n Left: {self.left}\n Right: {self.right}"
-        return output_str
-
-    def __copy__(self):
-        new_node = Node(self.data)
-        new_node.left = self.left
-        new_node.right = self.right
-        return new_node
-
-    def __deepcopy__(self, memodict={}):
-        new_node = Node(copy.deepcopy(self.data))
-        new_node.left = copy.deepcopy(self.left)
-        new_node.right = copy.deepcopy(self.right)
-        return new_node
-
-    def insert_left(self, node: Node) -> None:
-        if self.left is not None:
-            raise ChildAlreadyExistsError(self.left, node)
-        self.left = node
-        return None
-
-    def insert_right(self, node: Node) -> None:
-        if self.right is not None:
-            raise ChildAlreadyExistsError(self.right, node)
-        self.right = node
-        return None
-
-    def truncate(self) -> None:
-        self.left = None
-        self.right = None
-        return None
-
-
 def main():
-    node1 = Node(0)
-    node1.insert_left(Node(1))
-    node1.insert_right(Node(2))
-    print(node1)
+    pass
 
 
 if __name__ == "__main__":

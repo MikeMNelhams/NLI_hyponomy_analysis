@@ -14,6 +14,12 @@ class InvalidPathError(Exception):
     pass
 
 
+class FileEmptyError(Exception):
+    def __init__(self, file_path: str):
+        self.message = f"The file {file_path} is empty!"
+        super(FileEmptyError, self).__init__(self.message)
+
+
 def list_files_in_directory(directory_path: str, extension_type: str = '.txt') -> list:
     child_file_paths = os.listdir(directory_path)
     return [file_path for file_path in child_file_paths
@@ -337,10 +343,16 @@ class CSV_Writer:
     def __init__(self, file_path: str, header: Iterable=None, delimiter='|'):
         self.__assert_is_csv(file_path)
         self.file_path = file_path
-        self.header = header
-        self._batch_index = 0
-
         self.delimiter = delimiter
+        self.header = header
+
+        if header == '$auto':
+            if len(self) <= 1:
+                raise FileEmptyError(self.file_path)
+            self.header = None
+            self.header = self.load_line(0)[0]
+
+        self._batch_index = 0
 
     def __len__(self):
         # Remove 1, due to the empty line @ EOF.
@@ -375,7 +387,6 @@ class CSV_Writer:
         line_increment = 1 if self.header is not None else 0
 
         self.__assert_valid_line_number(start_index, end_index - 1)
-        print("RANGING:", start_index, end_index)
         # Makes use of early stopping AND known list memory allocation.
         with open(self.file_path, "r") as file:
             lower_limit = start_index + line_increment
@@ -432,7 +443,7 @@ class CSV_Writer:
         return self.__load()
 
     @load_print_decorator
-    def load_all_as_list(self, safe=True, as_float=False) -> list:
+    def load_all(self, safe=True, as_float=False) -> list:
         if safe and not self.file_exists:
             raise FileExistsError
 
@@ -521,9 +532,7 @@ class CSV_Writer:
 
     def __assert_valid_line_number(self, *line_numbers: int) -> None:
         assert not self.file_empty and self.file_exists, FileNotFoundError
-        maximum_line_number =  len(self) - 1 if self.header is None else len(self) - 2
-        print("LENGTH:", len(self))
-        print("MAX LINE NUMBER:", maximum_line_number)
+        maximum_line_number = len(self) - 1 if self.header is None else len(self) - 2
         for line_number in line_numbers:
             if line_number < 0 or line_number > maximum_line_number:
                 print(f'Invalid line {line_number}')

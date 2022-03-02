@@ -1,3 +1,5 @@
+import re
+
 import matplotlib.pyplot as plt
 import numpy as np
 from dotenv import load_dotenv
@@ -5,10 +7,14 @@ from dotenv import load_dotenv
 import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
-from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean
+from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch
 from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
 from NLI_hyponomy_analysis.data_pipeline.word_operations import find_all_pos_tags
 from binary_parse_tree import BinaryParseTree
+
+
+def area_under_roc_curve(data_path: str) -> float:
+    data_loader = file_op.CSV_Writer(data_path, delimiter=',')
 
 
 def ke_multiply(data_path: str):
@@ -63,8 +69,8 @@ def calc_ke_multiply(batch_size, data_loader, word_vectors):
 
 def k_e_from_batches(sentence1_vectors, sentence2_vectors):
     try:
-        vectors1 = multiply_sentence(sentence1_vectors)
-        vectors2 = multiply_sentence(sentence2_vectors)
+        vectors1 = hadamard_list_of_vectors(sentence1_vectors)
+        vectors2 = hadamard_list_of_vectors(sentence2_vectors)
     except ValueError:
         return 0
 
@@ -85,7 +91,7 @@ def efficient_vectors_from_batch(batch, word_vectors):
     return vectors
 
 
-def multiply_sentence(vectors):
+def hadamard_list_of_vectors(vectors):
     if not vectors:
         print("EMPTY VECTORS!")
         raise ValueError
@@ -98,7 +104,7 @@ def multiply_sentence(vectors):
     return out
 
 
-def pos_k_e(data_loader, word_vectors, batch_size: int=256):
+def snli_pos_k_e(data_loader, word_vectors, batch_size: int=256):
     batch = data_loader.load_sequential(batch_size).to_model_data(["sentence1_parse", "sentence2_parse", "gold_label"])
 
     batch_1 = [sentence[0] for sentence in batch]
@@ -119,7 +125,28 @@ def pos_k_e(data_loader, word_vectors, batch_size: int=256):
     return k_e
 
 
-def pos_batch(data_path: str, batch_size: int=256):
+def ks2016_pos_k_e(data_loader, word_vectors, batch_size: int=256, tags=None):
+    batch = data_loader.load_sequential(batch_size)
+
+    batch_1 = [sentence[0] for sentence in batch]
+    batch_1 = [BinaryParseTree.from_untagged_sentence(sentence, word_vectors, tags=tags) for sentence in batch_1]
+
+    for parse_tree in batch_1:
+        parse_tree.evaluate()
+
+    batch_2 = [sentence[1] for sentence in batch]
+    batch_2 = [BinaryParseTree.from_untagged_sentence(sentence, word_vectors, tags=tags) for sentence in batch_2]
+    for parse_tree in batch_2:
+        parse_tree.evaluate()
+
+    labels = [sentence[2] for sentence in batch]
+
+    k_e = [[str(k_e_from_two_vectors(tree1.data[0], tree2.data[0])), label]
+           for tree1, tree2, label in zip(batch_1, batch_2, labels)]
+    return k_e
+
+
+def test_snli(data_path: str, batch_size: int=256):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
     data_loader = SNLI_DataLoader_Unclean(data_path)
 
@@ -144,7 +171,48 @@ def pos_batch(data_path: str, batch_size: int=256):
     batch_sizes = [batch_size for _ in range(num_iters)] + [last_batch_size]
 
     for batch_size in batch_sizes:
-        k_e = pos_k_e(data_loader, word_vectors, batch_size)
+        k_e = snli_pos_k_e(data_loader, word_vectors, batch_size)
+        data_writer.append_lines(k_e)
+
+
+def test_ks2016(data_path: str):
+    load_dotenv()  # Path to the glove data directory -> HOME="..."
+
+    ks_type = re.findall(r'[^\-]*$', file_op.file_path_without_extension(data_path))[0].lower()
+    ks_type_to_tags = {"sv": ('n', 'v'), "vo": ('v', 'n'), "svo": ('n', 'v', 'n')}
+    tags = None
+    if ks_type_to_tags is not None:
+        tags = ks_type_to_tags[ks_type]
+
+    data_loader = file_op.CSV_Writer(data_path, delimiter=',')
+
+    sentences = data_loader.load_all()
+    sentences0 = SentenceBatch([' '.join(sentence[0:1]).lower() for sentence in sentences])
+
+    word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors_0.load_memory()
+    embed.remove_all_non_unique(word_vectors_0, sentences0.unique_words)
+
+    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
+    word_vectors.remove_all_except(sentences0.unique_words)
+    word_vectors.flatten()
+    word_vectors.generate_missing_vectors(sentences0.unique_words, word_vectors_0)
+    word_vectors.square()
+
+    data_writer = file_op.CSV_Writer("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv", header=("k_e", "label"),
+                                     delimiter=',')
+    batch_size = 256
+
+    if data_writer.file_exists:
+        raise FileExistsError
+
+    num_iters = len(data_loader) // batch_size
+    last_batch_size = len(data_loader) - batch_size * num_iters - 1
+
+    batch_sizes = [batch_size for _ in range(num_iters)] + [last_batch_size]
+
+    for batch_size in batch_sizes:
+        k_e = ks2016_pos_k_e(data_loader, word_vectors, batch_size, tags=tags)
         data_writer.append_lines(k_e)
 
 
@@ -161,19 +229,17 @@ def scatter(data_path: str):
 
     number_correct = 0
 
+    label_mapping = {"t": 1, "entailment": 1, "neutral": 0.5, "f": 0, "contradiction": 0}
+
     for i, (value, label) in enumerate(zip(values, labels)):
         plot_color = 'blue'
-        label_encoding = 0
-
-        if label == "entailment":
+        label_encoding = label_mapping[label.lower()]
+        if label_encoding == 1:
             plot_color = 'green'
-            label_encoding = 1
-        elif label == "neutral":
+        elif label_encoding == 0.5:
             plot_color = 'blue'
-            label_encoding = 0.5
-        elif label == "contradiction":
+        elif label_encoding == 0:
             plot_color = 'red'
-            label_encoding = 0
 
         if round(value) == label_encoding:
             number_correct += 1
@@ -196,27 +262,10 @@ def scatter(data_path: str):
     plt.show()
 
 
-def test_ks2016(data_path: str):
-    load_dotenv()  # Path to the glove data directory -> HOME="..."
-    data_loader = SNLI_DataLoader_Unclean(data_path)
-
-    word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
-    word_vectors_0.load_memory()
-    embed.remove_all_non_unique(word_vectors_0, data_loader.unique_words)
-
-    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
-    word_vectors.remove_all_except(data_loader.unique_words)
-    word_vectors.flatten()
-    word_vectors.generate_missing_vectors(data_loader.unique_words, word_vectors_0)
-    word_vectors.square()
-
-    ks_loader = file_op.CSV_Writer("data/KS2016/KS2016-SV.csv", delimiter=',')
-
-
-
 if __name__ == "__main__":
     # ke_multiply("data/snli_1.0/snli_1.0_train.jsonl")
     # scatter("data/compositional_analysis/train/k_e/mult.csv")
-    # pos_batch("data/snli_1.0/snli_1.0_train.jsonl")
+    # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
     # scatter("data/compositional_analysis/train/k_e/pos_tree.csv")
-    pass
+    # test_ks2016("data/KS2016/KS2016-SV.csv")
+    scatter("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
