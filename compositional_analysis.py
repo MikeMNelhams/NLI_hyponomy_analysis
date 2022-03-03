@@ -293,8 +293,7 @@ def write_vectors(input_path: str, write_path: str):
     word_vectors.remove_all_except(sentences0.unique_words)
     word_vectors.flatten()
     word_vectors.generate_missing_vectors(sentences0.unique_words, word_vectors_0)
-    print(word_vectors.density_matrices)
-    # # word_vectors.to_csv(write_path)
+    word_vectors.to_csv(write_path)
 
 
 if __name__ == "__main__":
@@ -305,4 +304,4 @@ if __name__ == "__main__":
     # test_ks2016("data/KS2016/KS2016-SV.csv")
     # area_under_roc_curve("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
     write_vectors("data/KS2016/KS2016-SV.csv",
-                  "data/hyponyms_vectors/25_glove_wn_train_lemma_pos.csv")
+                  "data/word_sims_vectors/25_glove_wn_train_lemma_pos.csv")

@@ -455,7 +455,6 @@ class CSV_Writer:
         file_extension = file_path_extension(self.file_path)
         if file_extension == ".csv":
             self.__save(data)
-        print(f"Finished saving to file: {self.file_path}")
         return None
 
     def write_dataframe(self, data: pd.DataFrame):

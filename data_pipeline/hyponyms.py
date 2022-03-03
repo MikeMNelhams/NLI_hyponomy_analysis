@@ -280,16 +280,14 @@ class DenseHyponymMatrices(file_op.DictWriter):
             return value
 
         for key in words:
-            print(key, get_vector(key))
             self.density_matrices[key] = get_vector(key)
-
         return None
 
     def to_csv(self, file_path: str):
-        print(self.density_matrices)
         assert len(self.__shape) == 1
         csv_writer = file_op.CSV_Writer(file_path, delimiter=' ')
         lines = [[key] + value.tolist() for key, value in self.density_matrices.items()]
+        csv_writer.write(lines)
 
     @property
     def __shape(self):
