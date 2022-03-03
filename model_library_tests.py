@@ -74,7 +74,7 @@ class NeuralNet(unittest.TestCase):
 
         word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
         word_vectors_0.load_memory()
-        embed.remove_all_non_unique(word_vectors_0, train_loader.unique_words)
+        embed.remove_all_except(word_vectors_0, train_loader.unique_words)
 
         word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
         word_vectors.remove_all_except(train_loader.unique_words)

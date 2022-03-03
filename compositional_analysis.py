@@ -12,9 +12,30 @@ from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
 from NLI_hyponomy_analysis.data_pipeline.word_operations import find_all_pos_tags
 from binary_parse_tree import BinaryParseTree
 
+from sklearn.metrics import roc_curve, roc_auc_score
+
+
+label_mapping = {"t": 1, "entailment": 1, "neutral": 0.5, "f": 0, "contradiction": 0, '-': 0.5}
+
 
 def area_under_roc_curve(data_path: str) -> float:
-    data_loader = file_op.CSV_Writer(data_path, delimiter=',')
+    predictions_loader = file_op.CSV_Writer(data_path, header="$auto", delimiter=',')
+    __all_predictions = predictions_loader.load_all()
+
+    predictions = np.array([float(prediction[0]) for prediction in __all_predictions])
+    class_labels = np.array([label_mapping[prediction[1].lower()] for prediction in __all_predictions])
+    del __all_predictions
+
+    print(class_labels)
+    print(predictions)
+    fpr, tpr, thresholds = roc_curve(class_labels, predictions)
+    auc = roc_auc_score(class_labels, predictions)
+
+    auc_message = f"Area under curve: {auc}"
+
+    print(auc_message)
+    plt.plot(fpr, tpr, linestyle='--', label=data_path)
+    plt.show()
 
 
 def ke_multiply(data_path: str):
@@ -24,7 +45,7 @@ def ke_multiply(data_path: str):
 
     word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
-    embed.remove_all_non_unique(word_vectors_0,  data_loader.unique_words)
+    embed.remove_all_except(word_vectors_0, data_loader.unique_words)
 
     word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
     word_vectors.remove_all_except(data_loader.unique_words)
@@ -152,7 +173,7 @@ def test_snli(data_path: str, batch_size: int=256):
 
     word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
-    embed.remove_all_non_unique(word_vectors_0, data_loader.unique_words)
+    embed.remove_all_except(word_vectors_0, data_loader.unique_words)
 
     word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
     word_vectors.remove_all_except(data_loader.unique_words)
@@ -191,7 +212,6 @@ def test_ks2016(data_path: str):
 
     word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
-    embed.remove_all_non_unique(word_vectors_0, sentences0.unique_words)
 
     word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
     word_vectors.remove_all_except(sentences0.unique_words)
@@ -229,8 +249,6 @@ def scatter(data_path: str):
 
     number_correct = 0
 
-    label_mapping = {"t": 1, "entailment": 1, "neutral": 0.5, "f": 0, "contradiction": 0}
-
     for i, (value, label) in enumerate(zip(values, labels)):
         plot_color = 'blue'
         label_encoding = label_mapping[label.lower()]
@@ -262,10 +280,29 @@ def scatter(data_path: str):
     plt.show()
 
 
+def write_vectors(input_path: str, write_path: str):
+    data_loader = file_op.CSV_Writer(input_path, delimiter=',')
+
+    sentences = data_loader.load_all()
+    sentences0 = SentenceBatch([' '.join(sentence[0:1]).lower() for sentence in sentences])
+    load_dotenv()  # Path to the glove data directory -> HOME="..."
+    word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors_0.load_memory()
+
+    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
+    word_vectors.remove_all_except(sentences0.unique_words)
+    word_vectors.flatten()
+    word_vectors.generate_missing_vectors(sentences0.unique_words, word_vectors_0)
+    print(word_vectors.density_matrices)
+    # # word_vectors.to_csv(write_path)
+
+
 if __name__ == "__main__":
     # ke_multiply("data/snli_1.0/snli_1.0_train.jsonl")
     # scatter("data/compositional_analysis/train/k_e/mult.csv")
     # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
     # scatter("data/compositional_analysis/train/k_e/pos_tree.csv")
     # test_ks2016("data/KS2016/KS2016-SV.csv")
-    scatter("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
+    # area_under_roc_curve("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
+    write_vectors("data/KS2016/KS2016-SV.csv",
+                  "data/hyponyms_vectors/25_glove_wn_train_lemma_pos.csv")

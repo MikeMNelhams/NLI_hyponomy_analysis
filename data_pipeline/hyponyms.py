@@ -6,10 +6,9 @@ from typing import Dict
 import numpy as np
 from nltk.corpus import wordnet as wn
 
-from NLI_hyponomy_analysis.data_pipeline.file_operations import DictWriter, list_files_in_directory
+import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 
-from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed, SNLI_DataLoader_Unclean
-from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Processed
+from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean
 
 import math
 
@@ -46,7 +45,7 @@ class KS:
         return vocab
 
 
-class Hyponyms(DictWriter):
+class Hyponyms(file_op.DictWriter):
     def __init__(self, hyponyms_file_path: str, unique_words: list):
         super(Hyponyms, self).__init__(hyponyms_file_path)
 
@@ -86,7 +85,7 @@ class Hyponyms(DictWriter):
         return hyponyms
 
 
-class GloveVectors(DictWriter):
+class GloveVectors(file_op.DictWriter):
     def __init__(self, save_path: str, glove_vector_file_path: str, hyponyms: dict):
         super(GloveVectors, self).__init__(save_path)
 
@@ -128,7 +127,7 @@ class GloveVectors(DictWriter):
         return hypo_vectors
 
 
-class DenseHyponymMatrices(DictWriter):
+class DenseHyponymMatrices(file_op.DictWriter):
     def __init__(self, density_matrices_file_path: str,
                  hyponyms: Hyponyms = None, hyponym_vectors: dict = None,
                  normalisation=False):
@@ -249,7 +248,7 @@ class DenseHyponymMatrices(DictWriter):
         return None
 
     def square(self) -> None:
-        shape = list(self.density_matrices.values())[0].shape
+        shape = self.__shape
         assert len(shape) == 1
 
         square_size = int(math.sqrt(shape[0]))
@@ -268,6 +267,7 @@ class DenseHyponymMatrices(DictWriter):
                 return np.outer(value, value).flatten()
 
             value = glove_vectors.lookup(word)
+
             # Lookup returns UNK/PAD if word is OOV
             if value is None:
                 return padding_vector
@@ -279,9 +279,22 @@ class DenseHyponymMatrices(DictWriter):
                 raise TypeError
             return value
 
-        self.density_matrices = {key: get_vector(key) for key in words}
+        for key in words:
+            print(key, get_vector(key))
+            self.density_matrices[key] = get_vector(key)
 
         return None
+
+    def to_csv(self, file_path: str):
+        print(self.density_matrices)
+        assert len(self.__shape) == 1
+        csv_writer = file_op.CSV_Writer(file_path, delimiter=' ')
+        lines = [[key] + value.tolist() for key, value in self.density_matrices.items()]
+
+    @property
+    def __shape(self):
+        shape = list(self.density_matrices.values())[0].shape
+        return shape
 
 
 def main():

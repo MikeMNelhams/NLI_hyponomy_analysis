@@ -31,7 +31,7 @@ def glove_matrix(input_file_path: str, output_file_path: str):
     return out
 
 
-def remove_all_non_unique(word_vectors: GloveEmbedding, unique_words: list) -> None:
+def remove_all_except(word_vectors: GloveEmbedding, unique_words: list) -> None:
     """ https://docs.python.org/3/library/sqlite3.html """
 
     c = word_vectors.db.cursor()
