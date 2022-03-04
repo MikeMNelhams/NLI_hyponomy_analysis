@@ -264,7 +264,7 @@ class DenseHyponymMatrices(file_op.DictWriter):
             value = self.lookup(word)
 
             if value is not None:
-                return np.outer(value, value).flatten()
+                return value.flatten()
 
             value = glove_vectors.lookup(word)
 

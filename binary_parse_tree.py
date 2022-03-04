@@ -61,7 +61,7 @@ class BinaryParseTree:
     def __binary_operation(self, label1: str, label2: str) -> Callable[[np.array, np.array], np.array]:
         if label1 in self.ignore_labels:
             if label2 in self.ignore_labels:
-                return None
+                return lambda x, y: None
             return lambda x, y: y
         if label2 in self.ignore_labels:
             return lambda x, y: x
@@ -145,10 +145,12 @@ class BinaryParseTree:
                 tree_list.append(self.__evaluate(child))
 
         if len(tree_list) == 1:
-            vector1 = tree_list[0]
+            vector1 = tree_list[0][0]
+            print(vector1, type(vector1))
             if isinstance(vector1, str):
+                print("Looking up vector.")
                 vector1 = self.word_vectors.safe_lookup(vector1)
-            return Tree(tree.label(), vector1)
+            return Tree(tree.label(), [vector1])
 
         if len(tree_list) == 2:
             return self.__evaluate_2(tree_list[0], tree_list[1], tree.label())

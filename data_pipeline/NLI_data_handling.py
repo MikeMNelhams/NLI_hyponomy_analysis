@@ -142,6 +142,9 @@ class EntailmentModelBatch:
         else:
             raise StopIteration
 
+    def __getitem__(self, item):
+        return self.data[item, :]
+
     @property
     def word_delimiter(self):
         return self.__word_delimiter
