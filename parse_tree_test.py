@@ -3,7 +3,7 @@ from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoade
 from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 
-from NLI_hyponomy_analysis.binary_parse_tree import BinaryParseTree
+from NLI_hyponomy_analysis.parse_tree import ParseTree
 
 from dotenv import load_dotenv
 
@@ -25,7 +25,7 @@ class SNLI_Train_test(unittest.TestCase):
     def test_str_input_none(self):
         batch = self.data_loader.load_line(88117).to_model_data(["sentence1_parse", "sentence2_parse", "gold_label"])
 
-        tree = BinaryParseTree(batch[0][1], word_vectors=self.word_vectors)
+        tree = ParseTree(batch[0][1], word_vectors=self.word_vectors)
         tree.evaluate()
         self.assertEqual(tree.data[0], None)
 

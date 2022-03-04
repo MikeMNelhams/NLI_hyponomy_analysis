@@ -14,7 +14,7 @@ class ChildAlreadyExistsError(Exception):
         super(ChildAlreadyExistsError, self).__init__(self.message)
 
 
-class BinaryParseTree:
+class ParseTree:
     ignore_labels = ['ls', 'pos', '.', 'dt', ',']
     hadamard_labels = ['ex', 'cd', 'md', 'pdt', 'prp', 'prp$', 'rp', 'uh', 'to']
     adjective_labels = ['in', 'jj']
@@ -46,7 +46,7 @@ class BinaryParseTree:
     @classmethod
     def from_untagged_sentence(cls, sentence: str, word_vectors, delimiter=' ', tags=None):
         if '(' not in sentence:
-            output = BinaryParseTree('()', word_vectors)
+            output = ParseTree('()', word_vectors)
             leaves = sentence.split(delimiter)
             if tags is None:
                 leaves = [Tree('', [leaf]) for leaf in leaves]
@@ -56,7 +56,7 @@ class BinaryParseTree:
             output.data = Tree("Root", leaves)
             return output
 
-        return BinaryParseTree(sentence, word_vectors)
+        return ParseTree(sentence, word_vectors)
 
     def __binary_operation(self, label1: str, label2: str) -> Callable[[np.array, np.array], np.array]:
         if label1 in self.ignore_labels:
@@ -73,23 +73,29 @@ class BinaryParseTree:
 
         return hl.mult
 
-    @staticmethod
-    def __is_verb_label(label: str):
-        if label == '':
-            return False
-        if label[0] == 'v':
-            return True
-        return False
+    def __evaluate(self, tree: Tree):
+        """
+        We maintain a stack of parents.
+        If all the children in the current node are leaves, we operate on tree1, tree2, tree3, ...
+        """
 
-    @staticmethod
-    def __is_noun_label(label: str):
-        if label == '':
-            return False
-        if label[0] == 'n':
-            return True
-        if label == 'wp':
-            return True
-        return False
+        tree_list = []
+        for child in tree:
+            if self.__tree_is_leaf(child):
+                tree_list.append(child)
+            else:
+                tree_list.append(self.__evaluate(child))
+
+        if len(tree_list) == 1:
+            vector1 = tree_list[0][0]
+            if isinstance(vector1, str):
+                vector1 = self.word_vectors.safe_lookup(vector1)
+            return Tree(tree.label(), [vector1])
+
+        if len(tree_list) == 2:
+            return self.__evaluate_2(tree_list[0], tree_list[1], tree.label())
+
+        return self.__evaluate_greater_than_2(tree_list, tree.label())
 
     def __evaluate_2(self, tree1: Tree, tree2: Tree, parent_label: str):
         label1 = tree1.label()
@@ -125,39 +131,29 @@ class BinaryParseTree:
         return Tree(parent_label, [current_tree[0]])
 
     @staticmethod
+    def __is_verb_label(label: str):
+        if label == '':
+            return False
+        if label[0] == 'v':
+            return True
+        return False
+
+    @staticmethod
+    def __is_noun_label(label: str):
+        if label == '':
+            return False
+        if label[0] == 'n':
+            return True
+        if label == 'wp':
+            return True
+        return False
+
+    @staticmethod
     def __tree_is_leaf(tree: Tree):
         if len(tree) == 1:
             if not isinstance(tree[0], Tree):
                 return True
         return False
-
-    def __evaluate(self, tree: Tree):
-        """
-        We maintain a stack of parents.
-        If all the children in the current node are leaves, we operate on tree1, tree2, tree3, ...
-        """
-
-        tree_list = []
-        for child in tree:
-            if self.__tree_is_leaf(child):
-                tree_list.append(child)
-            else:
-                tree_list.append(self.__evaluate(child))
-
-        if len(tree_list) == 1:
-            vector1 = tree_list[0][0]
-            print(vector1, type(vector1))
-            if isinstance(vector1, str):
-                print("Looking up vector.")
-                vector1 = self.word_vectors.safe_lookup(vector1)
-            return Tree(tree.label(), [vector1])
-
-        if len(tree_list) == 2:
-            return self.__evaluate_2(tree_list[0], tree_list[1], tree.label())
-
-        return self.__evaluate_greater_than_2(tree_list, tree.label())
-
-
 
     @staticmethod
     def pos_string_to_binary_tree(pos_string: str):

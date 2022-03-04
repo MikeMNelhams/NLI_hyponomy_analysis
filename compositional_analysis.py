@@ -10,7 +10,7 @@ from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch
 from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
 from NLI_hyponomy_analysis.data_pipeline.word_operations import find_all_pos_tags
-from binary_parse_tree import BinaryParseTree
+from parse_tree import ParseTree
 
 from sklearn.metrics import roc_curve, roc_auc_score
 
@@ -135,35 +135,21 @@ def snli_pos_k_e(data_loader, word_vectors, batch_size: int=256):
     batch = data_loader.load_sequential(batch_size).to_model_data(["sentence1_parse", "sentence2_parse", "gold_label"])
 
     batch_1 = [sentence[0] for sentence in batch]
-    batch_1 = [BinaryParseTree(sentence, word_vectors) for sentence in batch_1]
+    batch_1 = [ParseTree(sentence, word_vectors) for sentence in batch_1]
 
     for parse_tree in batch_1:
         parse_tree.evaluate()
 
     batch_2 = [sentence[1] for sentence in batch]
-    batch_2 = [BinaryParseTree(sentence, word_vectors) for sentence in batch_2]
+    batch_2 = [ParseTree(sentence, word_vectors) for sentence in batch_2]
     for parse_tree in batch_2:
         parse_tree.evaluate()
-
-    for i, tree in enumerate(batch_1):
-        vec = tree.data[0]
-        if vec is not None and type(vec) == str:
-            print(f"Found bad string IN BATCH 1 for #{i}, {vec}, batch_line: {batch[i]}")
-            print(f"Error on file index: {data_loader._batch_index - batch_size + i}")
-            raise ZeroDivisionError
-
-    for i, tree in enumerate(batch_2):
-        vec = tree.data[0]
-        if vec is not None and type(vec) == str:
-            print(f"Found bad string IN BATCH 2 for #{i}, {vec}, batch_line: {batch[i]}")
-            print(f"Error on file index: {data_loader._batch_index - batch_size + i}")
-            raise ZeroDivisionError
 
     labels = [sentence[2] for sentence in batch]
 
     k_e = [[k_e_from_two_vectors(tree1.data[0], tree2.data[0]), label]
            for tree1, tree2, label in zip(batch_1, batch_2, labels)]
-    k_e = [str([line[0], line[1]]) for line in k_e if line[0] is not None]
+    k_e = [[str(line[0]), line[1]] for line in k_e if line[0] is not None]
     return k_e
 
 
@@ -171,13 +157,13 @@ def ks2016_pos_k_e(data_loader, word_vectors, batch_size: int=256, tags=None):
     batch = data_loader.load_sequential(batch_size)
 
     batch_1 = [sentence[0] for sentence in batch]
-    batch_1 = [BinaryParseTree.from_untagged_sentence(sentence, word_vectors, tags=tags) for sentence in batch_1]
+    batch_1 = [ParseTree.from_untagged_sentence(sentence, word_vectors, tags=tags) for sentence in batch_1]
 
     for parse_tree in batch_1:
         parse_tree.evaluate()
 
     batch_2 = [sentence[1] for sentence in batch]
-    batch_2 = [BinaryParseTree.from_untagged_sentence(sentence, word_vectors, tags=tags) for sentence in batch_2]
+    batch_2 = [ParseTree.from_untagged_sentence(sentence, word_vectors, tags=tags) for sentence in batch_2]
     for parse_tree in batch_2:
         parse_tree.evaluate()
 
@@ -213,7 +199,7 @@ def test_snli(data_path: str, batch_size: int=256):
 
     for batch_size in batch_sizes:
         k_e = snli_pos_k_e(data_loader, word_vectors, batch_size)
-        # data_writer.append_lines(k_e)
+        data_writer.append_lines(k_e)
 
 
 def test_ks2016(data_path: str):
@@ -331,7 +317,7 @@ def testing(data_path: str):
     word_vectors.generate_missing_vectors(data_loader.unique_words, word_vectors_0)
     word_vectors.square()
 
-    tree = BinaryParseTree(batch[0][1], word_vectors=word_vectors)
+    tree = ParseTree(batch[0][1], word_vectors=word_vectors)
     tree.evaluate()
 
     print("EVALUATED:", tree)
@@ -342,10 +328,8 @@ if __name__ == "__main__":
     # scatter("data/compositional_analysis/train/k_e/mult.csv")
     # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
     # scatter("data/compositional_analysis/train/k_e/pos_tree.csv")
-    # test_ks2016("data/KS2016/KS2016-SV.csv")
-    # scatter("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
+    test_ks2016("data/KS2016/KS2016-SV.csv")
+    scatter("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
     # area_under_roc_curve("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
     # write_vectors("data/KS2016/KS2016-SV.csv",
     #               "data/word_sims_vectors/25_glove_wn_train_lemma_pos.csv")
-
-    testing("data/snli_1.0/snli_1.0_train.jsonl")
