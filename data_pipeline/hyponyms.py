@@ -5,7 +5,7 @@ from typing import Dict
 
 import numpy as np
 from nltk.corpus import wordnet as wn
-
+from dotenv import load_dotenv
 import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean
@@ -13,51 +13,22 @@ from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoade
 import math
 
 
-class KS:
-    def __init__(self, ks_file_path: str):
-        self.__file_path = ks_file_path
-        self.__phrase_pairs = self.__load_ks2016()
-
-        self.scores = list(self.__phrase_pairs.keys())
-        self.words = self.get_vocab()
-
-    @property
-    def file_path(self):
-        return self.__file_path
-
-    def __load_ks2016(self) -> dict:
-        print(f"Getting phrase pairs and entailments values for file {self.file_path}...")
-        scores = {}
-        with open(self.file_path, 'r') as f:
-            for line in f:
-                entries = [word.lower() for phrase in line.split(',') for word in phrase.split()]
-                scores[tuple(entries[:-1])] = entries[-1]
-        print(f"Done getting phrase pairs for file {self.file_path}")
-        print('-' * 50)
-        return scores
-
-    def get_vocab(self) -> list:
-        print("Creating vocab list from phrase pairs...")
-        word_list = [word for phrases in self.scores for word in phrases]
-        vocab = list(set(word_list))
-        print("Done")
-        print('-' * 50)
-        return vocab
-
-
 class Hyponyms(file_op.DictWriter):
     def __init__(self, hyponyms_file_path: str, unique_words: list):
         super(Hyponyms, self).__init__(hyponyms_file_path)
 
         if not self.file_exists or self.file_empty:
-            self.hyponyms = self.__hyponyms_from_words(unique_words)
+            self.hyponyms = self.hyponyms_from_words(unique_words)
 
             self.save(self.hyponyms)
         else:
             self.hyponyms = self.load()
 
+    def __repr__(self):
+        return str(self.hyponyms)
+
     @staticmethod
-    def __hyponyms_from_words(word_list, pos=None, depth=10):
+    def hyponyms_from_words(word_list, pos=None, depth=10) -> dict:
 
         def hypo(_s):
             return _s.hyponyms()
@@ -159,7 +130,14 @@ class DenseHyponymMatrices(file_op.DictWriter):
             self.density_matrices = self.load()
             self.density_matrices = {key: np.array(value) for key, value in self.density_matrices.items()}
 
-        self.__d_emb = list(self.density_matrices.values())[0].shape[0]**2
+        try:
+            self.__d_emb = list(self.density_matrices.values())[0].shape[0]**2
+        except:
+            try:
+                self.__d_emb = self.density_matrices["cat"].shape[0]**2
+            except:
+                print("Something went from determining d_emb")
+                raise ValueError
 
     def __len__(self):
         return len(self.density_matrices)
@@ -193,6 +171,10 @@ class DenseHyponymMatrices(file_op.DictWriter):
 
         for word in hyp_dict:
             if hyp_dict[word] == 'OOV':
+                if word not in hypo_vectors:
+                    continue
+                v = hypo_vectors[word]
+                vectors[word] = np.outer(v, v)
                 continue
             for hyp in hyp_dict[word]:
                 if hyp not in hypo_vectors:
@@ -296,19 +278,16 @@ class DenseHyponymMatrices(file_op.DictWriter):
 
 
 def main():
-    validation_loader = SNLI_DataLoader_Unclean(r"Q:\Michael'sStuff\EngMaths\Year4\TechnicalProject\NLI_hyponomy_analysis\data\snli_1.0\snli_1.0_train.jsonl")
+    validation_loader = SNLI_DataLoader_Unclean(r"Q:\MichaelsStuff\EngMaths\Year4\TechnicalProject\NLI_hyponomy_analysis\data\snli_1.0\snli_1.0_train.jsonl")
 
     hyponyms_all = Hyponyms('../data/hyponyms/25d_hyponyms_train_unclean.json', validation_loader.unique_words)
+
     vectors = GloveVectors('../data/hyponyms/25d_glove_vectors.json',
                            '../data/embedding_data/glove/glove.twitter.27B.25d.txt', hyponyms_all.hyponyms)
     density_matrices = DenseHyponymMatrices(density_matrices_file_path="../data/hyponyms/dm-25d-glove-wn_train_unclean.json",
                                             hyponyms=hyponyms_all, hyponym_vectors=vectors.vectors)
 
     print("We built {0} density matrices".format(len(density_matrices)))
-
-    # print('-' * 50)
-    #
-    # print('~'*80, "\nDensity matrices:", density_matrices.density_matrices, '\n', '~'*80)
 
 
 if __name__ == "__main__":

@@ -7,14 +7,14 @@ from NLI_hyponomy_analysis.parse_tree import ParseTree
 
 from dotenv import load_dotenv
 
+word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+word_vectors_0.load_memory()
+
 
 class SNLI_Train_test(unittest.TestCase):
     data_loader = SNLI_DataLoader_Unclean("data/snli_1.0/snli_1.0_train.jsonl")
 
     load_dotenv()
-
-    word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
-    word_vectors_0.load_memory()
 
     word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
     word_vectors.remove_all_except(data_loader.unique_words)

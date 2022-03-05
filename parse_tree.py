@@ -58,18 +58,13 @@ class ParseTree:
 
         return ParseTree(sentence, word_vectors)
 
-    def __binary_operation(self, label1: str, label2: str) -> Callable[[np.array, np.array], np.array]:
-        if label1 in self.ignore_labels:
-            if label2 in self.ignore_labels:
-                return lambda x, y: None
-            return lambda x, y: y
-        if label2 in self.ignore_labels:
-            return lambda x, y: x
-
-        if self.__is_noun_label(label1) and self.__is_verb_label(label2):
-            return hl.mmult1
-        if self.__is_verb_label(label1) and self.__is_noun_label(label2):
-            return hl.mmult2
+    def __binary_operation(self, label1: str, label2: str, base_op=hl.mult) -> Callable[[np.array, np.array], np.array]:
+        # if label1 in self.ignore_labels:
+        #     if label2 in self.ignore_labels:
+        #         return lambda x, y: None
+        #     return lambda x, y: y
+        # if label2 in self.ignore_labels:
+        #     return lambda x, y: x
 
         return hl.mult
 

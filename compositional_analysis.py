@@ -8,7 +8,7 @@ import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch
-from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, Hyponyms, GloveVectors
 from NLI_hyponomy_analysis.data_pipeline.word_operations import find_all_pos_tags
 from parse_tree import ParseTree
 
@@ -169,8 +169,9 @@ def ks2016_pos_k_e(data_loader, word_vectors, batch_size: int=256, tags=None):
 
     labels = [sentence[2] for sentence in batch]
 
-    k_e = [[str(k_e_from_two_vectors(tree1.data[0], tree2.data[0])), label]
+    k_e = [[k_e_from_two_vectors(tree1.data[0], tree2.data[0]), label]
            for tree1, tree2, label in zip(batch_1, batch_2, labels)]
+    k_e = [[str(line[0]), line[1]] for line in k_e if line[0] is not None]
     return k_e
 
 
@@ -202,13 +203,13 @@ def test_snli(data_path: str, batch_size: int=256):
         data_writer.append_lines(k_e)
 
 
-def test_ks2016(data_path: str):
+def test_ks2016(data_path: str, tags_enabled=True):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
 
     ks_type = re.findall(r'[^\-]*$', file_op.file_path_without_extension(data_path))[0].lower()
     ks_type_to_tags = {"sv": ('n', 'v'), "vo": ('v', 'n'), "svo": ('n', 'v', 'n')}
     tags = None
-    if ks_type_to_tags is not None:
+    if tags_enabled and ks_type_to_tags is not None:
         tags = ks_type_to_tags[ks_type]
 
     data_loader = file_op.CSV_Writer(data_path, delimiter=',')
@@ -225,7 +226,8 @@ def test_ks2016(data_path: str):
     word_vectors.generate_missing_vectors(sentences0.unique_words, word_vectors_0)
     word_vectors.square()
 
-    data_writer = file_op.CSV_Writer("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv", header=("k_e", "label"),
+    data_writer = file_op.CSV_Writer(f"data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv",
+                                     header=("k_e", "label"),
                                      delimiter=',')
     batch_size = 256
 
@@ -303,24 +305,22 @@ def write_vectors(input_path: str, write_path: str):
 
 
 def testing(data_path: str):
-    data_loader = SNLI_DataLoader_Unclean(data_path)
-    batch = data_loader.load_line(88117).to_model_data(["sentence1_parse", "sentence2_parse", "gold_label"])
+    load_dotenv()  # Path to the glove data directory -> HOME="..."
 
-    load_dotenv()
-
-    word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
+    unique_words = word_vectors_0.words
 
-    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
-    word_vectors.remove_all_except(data_loader.unique_words)
+    hyponyms_all = Hyponyms("data/hyponyms/25d_hyponyms_all.json", unique_words)
+
+    vectors = GloveVectors("data/hyponyms/25d_glove_all.json",
+                           "data/embedding_data/glove/glove.twitter.27B.25d.txt", hyponyms_all.hyponyms)
+
+    word_vectors = DenseHyponymMatrices('data/hyponyms/25d_hyponym_vectors.json', hyponyms=hyponyms_all,
+                                        hyponym_vectors=vectors.vectors)
+
     word_vectors.flatten()
-    word_vectors.generate_missing_vectors(data_loader.unique_words, word_vectors_0)
-    word_vectors.square()
-
-    tree = ParseTree(batch[0][1], word_vectors=word_vectors)
-    tree.evaluate()
-
-    print("EVALUATED:", tree)
+    word_vectors.to_csv(data_path)
 
 
 if __name__ == "__main__":
@@ -328,8 +328,9 @@ if __name__ == "__main__":
     # scatter("data/compositional_analysis/train/k_e/mult.csv")
     # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
     # scatter("data/compositional_analysis/train/k_e/pos_tree.csv")
-    test_ks2016("data/KS2016/KS2016-SV.csv")
-    scatter("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
+    # test_ks2016("data/KS2016/KS2016-SV.csv", tags_enabled=False)
     # area_under_roc_curve("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
+    # scatter("data/compositional_analysis/KS2016/sv/k_e/pos_tree.csv")
     # write_vectors("data/KS2016/KS2016-SV.csv",
     #               "data/word_sims_vectors/25_glove_wn_train_lemma_pos.csv")
+    testing("data/word_sims_vectors/25_glove_hypo_all.csv")

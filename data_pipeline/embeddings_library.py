@@ -5,7 +5,7 @@ from embeddings import GloveEmbedding
 from gensim.models.keyedvectors import KeyedVectors
 from gensim.scripts.glove2word2vec import glove2word2vec
 
-import sqlite3
+import numpy as np
 
 
 # Here is a table of different lookup methods I have tested
@@ -14,6 +14,23 @@ import sqlite3
 #    Load from file to RAM              | 100ms - 0200ms QUERY | 180 seconds LOAD | 5gb RAM | 5gb disk #
 #    SQLite to RAM - current solution   | 020ms - 0040ms QUERY | 012 seconds LOAD | 6gb RAM | 6gb disk #
 # -----------------------------------------------------------------------------------------------------#
+
+
+class Embedding2(GloveEmbedding):
+    def __init__(self, name='common_crawl_840', d_emb=300, show_progress=True, default='none'):
+        super(Embedding2, self).__init__(name=name, d_emb=d_emb, show_progress=show_progress, default=default)
+
+    @property
+    def head(self):
+        c = self.db.cursor()
+        q = c.execute('select word from embeddings limit 5').fetchall()
+        return q if q else None
+
+    @property
+    def words(self):
+        c = self.db.cursor()
+        q = c.execute("select word from embeddings").fetchall()
+        return [word for row in q for word in row] if q else None
 
 
 def glove_matrix(input_file_path: str, output_file_path: str):
@@ -43,4 +60,3 @@ def remove_all_except(word_vectors: GloveEmbedding, unique_words: list) -> None:
 
     c.close()
     return None
-

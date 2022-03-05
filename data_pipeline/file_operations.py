@@ -512,7 +512,7 @@ class CSV_Writer:
         if self.header is not None:
             rows_to_write = [list(self.header)] + rows_to_write
 
-        with open(self.file_path, 'w', newline='') as file:
+        with open(self.file_path, 'w', newline='', encoding="utf-8") as file:
             csv_writer = csv.writer(file, delimiter=self.delimiter)
             csv_writer.writerows(rows_to_write)
         return None
