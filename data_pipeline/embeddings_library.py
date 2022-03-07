@@ -5,6 +5,8 @@ from embeddings import GloveEmbedding
 from gensim.models.keyedvectors import KeyedVectors
 from gensim.scripts.glove2word2vec import glove2word2vec
 
+from typing import List
+from array import array
 import numpy as np
 
 
@@ -20,6 +22,9 @@ class Embedding2(GloveEmbedding):
     def __init__(self, name='common_crawl_840', d_emb=300, show_progress=True, default='none'):
         super(Embedding2, self).__init__(name=name, d_emb=d_emb, show_progress=show_progress, default=default)
 
+    def __repr__(self):
+        return str(self.words)
+
     @property
     def head(self):
         c = self.db.cursor()
@@ -32,20 +37,34 @@ class Embedding2(GloveEmbedding):
         q = c.execute("select word from embeddings").fetchall()
         return [word for row in q for word in row] if q else None
 
+    @property
+    def dict(self) -> dict:
+        c = self.db.cursor()
+        items = c.execute("select word, emb from embeddings").fetchall()
+        return {row[0]: np.array(array('f', row[1])) for row in items}
+
+    def remove_all_except(self, words: List[str]) -> None:
+        c = self.db.cursor()
+        c.execute(f"delete from embeddings where word not in {tuple(words)}")
+        c.close()
+        return None
+
 
 def glove_matrix(input_file_path: str, output_file_path: str):
-
     if not os.path.isfile(output_file_path):
         print('Generating all word2vec vectors.')
         glove2word2vec(glove_input_file=input_file_path, word2vec_output_file=output_file_path)
         print('Done')
         print('-' * 50)
 
-    print('Loading keyed vectors')
-    out = KeyedVectors.load_word2vec_format(output_file_path, binary=False)
-    print('Done')
-    print('-' * 50)
-    return out
+    if input_file_path is None:
+        print('Loading keyed vectors')
+        out = KeyedVectors.load_word2vec_format(output_file_path, binary=False)
+        print('Done')
+        print('-' * 50)
+        return out
+
+    return None
 
 
 def remove_all_except(word_vectors: GloveEmbedding, unique_words: list) -> None:
@@ -54,9 +73,5 @@ def remove_all_except(word_vectors: GloveEmbedding, unique_words: list) -> None:
     c = word_vectors.db.cursor()
 
     c.execute(f"delete from embeddings where word not in {tuple(unique_words)}")
-
-    # c.execute("select * from embeddings")
-    # print(len(c.fetchall()))
-
     c.close()
     return None

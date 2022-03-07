@@ -6,7 +6,7 @@ from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoade
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed
 from model_library import HyperParams
 from models import NeuralNetwork, StaticEntailmentNet, EntailmentTransformer
-from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices2, Hyponyms
 
 
 def main():
@@ -22,14 +22,14 @@ def main():
     train_loader = SNLI_DataLoader_POS_Processed(train_path)
     validation_loader = SNLI_DataLoader_POS_Processed(validation_path)
 
-    word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
-    embed.remove_all_except(word_vectors_0, train_loader.unique_words)
+    word_vectors_0.remove_all_except(train_loader.unique_words)
 
-    word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
-    word_vectors.remove_all_except(train_loader.unique_words)
+    hyponyms = Hyponyms("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
+
+    word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
     word_vectors.flatten()
-    word_vectors.generate_missing_vectors(train_loader.unique_words, word_vectors_0)
 
     params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
                          patience=6, early_stopping_mode="minimum", device='cpu')
