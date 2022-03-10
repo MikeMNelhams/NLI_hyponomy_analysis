@@ -481,5 +481,28 @@ class TestCSV_Writer(unittest.TestCase):
             self.assertEqual(loaded_data, correct_data)
 
 
+class TestParentDirPath(unittest.TestCase):
+    def test_flat_file(self):
+        test_path = "test_path.csv"
+        self.assertEqual(file_op.parent_path(test_path), test_path)
+
+    def test_single_nest_file(self):
+        test_path = "test_dir/test_path.csv"
+        self.assertEqual(file_op.parent_path(test_path), "test_dir")
+
+    def test_double_nested_file_1_iter(self):
+        test_path = "test_dir2/test_dir1/test_path.csv"
+        self.assertEqual(file_op.parent_path(test_path), "test_dir2/test_dir1")
+
+    def test_double_nested_file_2_iter(self):
+        test_path = "test_dir2/test_dir1/test_path.csv"
+        self.assertEqual(file_op.parent_path(test_path, 2), "test_dir2")
+
+    def test_empty_path(self):
+        test_path = ""
+        with self.assertRaises(file_op.InvalidPathError):
+            file_op.parent_path(test_path)
+
+
 if __name__ == '__main__':
     unittest.main()

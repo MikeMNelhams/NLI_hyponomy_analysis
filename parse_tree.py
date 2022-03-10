@@ -33,8 +33,8 @@ class ParseTree:
 
     def tree_to_binary(self, tree):
         """
-            Recursively turn a tree into a binary tree.
-            """
+        Recursively turn a tree into a binary tree.
+        """
         if isinstance(tree, str):
             return tree
         elif len(tree) == 1:
@@ -44,7 +44,7 @@ class ParseTree:
             return reduce(lambda x, y: Tree(label, (self.tree_to_binary(x), self.tree_to_binary(y))), tree)
 
     @classmethod
-    def from_untagged_sentence(cls, sentence: str, word_vectors, delimiter=' ', tags=None):
+    def from_sentence(cls, sentence: str, word_vectors, delimiter=' ', tags=None):
         if '(' not in sentence:
             output = ParseTree('()', word_vectors)
             leaves = sentence.split(delimiter)
@@ -91,7 +91,7 @@ class ParseTree:
 
         return self.__evaluate_greater_than_2(tree_list, tree.label())
 
-    def __evaluate_2(self, tree1: Tree, tree2: Tree, parent_label: str):
+    def __evaluate_2(self, tree1: Tree, tree2: Tree, parent_label: str) -> Tree:
         label1 = tree1.label()
         label2 = tree2.label()
 
@@ -114,19 +114,19 @@ class ParseTree:
 
         return Tree(parent_label, [operation(vector1, vector2)])
 
-    def __evaluate_greater_than_2(self, tree_list: List[Tree], parent_label: str):
+    def __evaluate_greater_than_2(self, tree_list: List[Tree], parent_label: str) -> Tree:
         assert len(tree_list) > 2, ValueError
 
         if self.__contains_adjective(tree_list):
-            """Go right to left evaluation using projection"""
+            # Go right to left evaluation using projection
             previous_default_op = self.default_op
             self.default_op = hl.mmult1
             evaluated_tree = self.__evaluate_right2left(tree_list)
             self.default_op = previous_default_op
-            return Tree(parent_label, [evaluated_tree])
+            return Tree(parent_label, [evaluated_tree[0]])
 
         evaluated_tree = self.__evaluate_left2right(tree_list)
-        return Tree(parent_label, [evaluated_tree])
+        return Tree(parent_label, [evaluated_tree[0]])
 
     def __evaluate_left2right(self, tree_list: List[Tree]) -> Tree:
         current_tree = tree_list[0]
@@ -145,13 +145,14 @@ class ParseTree:
         for tree in tree_list:
             if self.__is_adjective(tree.label()):
                 has_adjective = True
+                break
         return has_adjective
 
     @staticmethod
     def __is_verb(label: str) -> bool:
         if label == '':
             return False
-        if label[0] == 'v':
+        if label[0].lower() == 'v':
             return True
         return False
 
@@ -159,16 +160,17 @@ class ParseTree:
     def __is_noun(label: str) -> bool:
         if label == '':
             return False
-        if label[0] == 'n':
+        test_label = label.lower()
+        if test_label[0] == 'n':
             return True
-        if label == 'wp':
+        if test_label == 'wp':
             return True
         return False
 
     def __is_adjective(self, label: str) -> bool:
         if label == '':
             return False
-        if label in self.adjective_labels:
+        if label.lower() in self.adjective_labels:
             return True
         return False
 

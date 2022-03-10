@@ -6,6 +6,7 @@ import warnings
 
 from typing import List, Iterable, Any
 
+from pathlib import Path
 import pandas as pd
 
 
@@ -80,10 +81,11 @@ def is_dir(dir_path: str) -> bool:
     return os.path.isdir(dir_path)
 
 
-def make_dir(file_path: str) -> None:
-    if file_path[-1] != '/':
+def make_dir(dir_path: str, parents=True) -> None:
+    if dir_path[-1] != '/':
         raise InvalidPathError
-    os.mkdir(file_path)
+
+    Path(dir_path).mkdir(parents=parents, exist_ok=True)
     return None
 
 
@@ -104,6 +106,60 @@ def file_path_without_extension(file_path: str) -> str:
             break
 
     return file_path[:-stop_index]
+
+
+def child_path(path: str, child_num: int=1) -> str:
+    # TODO swap to a heap and while loop rather than recursion.
+    child_path_start = 0
+    if len(path) <= 1:
+        raise InvalidPathError
+    for i, char in enumerate(path):
+        if char == '/' or char == '\\':
+            child_path_start = i + 1
+            break
+
+    child_path_str = path
+    if child_path_start != 0:
+        child_path_str = path[child_path_start:]
+
+    if child_num > 1:
+        return child_path(child_path_str, child_num - 1)
+
+    return child_path_str
+
+
+def parent_path(path: str, parent_num: int=1) -> str:
+    if len(path) <= 1:
+        raise InvalidPathError
+
+    parent_path_start = 0
+    if len(path) <= 1:
+        raise InvalidPathError
+    for i, char in enumerate(reversed(path)):
+        if char == '/' or char == '\\':
+            parent_path_start = i + 1
+            break
+
+    parent_path_str = path
+    if parent_path_start != 0:
+        parent_path_str = path[:-parent_path_start]
+
+    if parent_num > 1:
+        return parent_path(parent_path_str, parent_num - 1)
+
+    return parent_path_str
+
+
+def root_dir(path: str) -> str:
+    root_end = 0
+    if len(path) <= 1:
+        raise InvalidPathError
+
+    for i, char in enumerate(path):
+        if char == '\\' or char == '/':
+            root_end = i
+            break
+    return path[:root_end]
 
 
 def trim_end_of_file_blank_line(file_path: str) -> None:

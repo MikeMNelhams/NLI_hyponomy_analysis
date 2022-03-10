@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from scipy.linalg import sqrtm
 
 
 class InvalidNormalizationTypeError(Exception):
@@ -59,8 +60,9 @@ def compose(list_of_matrices, func: callable, norm_type=None, **kwargs) -> np.ar
 
 def projection(a: np.array, b: np.array, tol=1e-8) -> np.array:
     """ a is outer, b is middle"""
-    verb_sqrt = matrix_sqrt(a)
-    assert_real_eigenvalues(verb_sqrt, tolerance=tol)
+    # verb_sqrt = matrix_sqrt(a)
+    verb_sqrt = sqrtm(a)
+    # assert_real_eigenvalues(verb_sqrt, tolerance=tol)
     mat = verb_sqrt.dot(b).dot(verb_sqrt)
     return mat
 
@@ -81,7 +83,7 @@ def normalize(a, normalization: str) -> np.array:
     return a
 
 
-def matrix_sqrt(a, tol=1e-8):
+def matrix_sqrt(a, tol=1e-4):
     assert_real_eigenvalues(a, tolerance=tol)
 
     a = np.real(a)
@@ -95,7 +97,7 @@ def matrix_sqrt(a, tol=1e-8):
     vectors = np.array([vec for val, vec in zip(values, vectors) if np.abs(val) > tol])
     values = values[np.abs(values) > tol]
 
-    assert np.all(values >= 0.), values
+    assert np.all(values >= 0), values
     values_sqrt = [math.sqrt(v) for v in values]
 
     assert len(vectors) == len(values_sqrt), "different number of eigenvectors and values"
