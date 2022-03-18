@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed, SNLI_DataLoader_Unclean
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
-from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices2, Hyponyms
 import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 
 import model_library as ml
@@ -72,11 +72,13 @@ class NeuralNet(unittest.TestCase):
         train_loader = SNLI_DataLoader_POS_Processed(train_small_path)
         validation_loader = SNLI_DataLoader_POS_Processed(validation_small_path)
 
-        word_vectors_0 = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+        word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
         word_vectors_0.load_memory()
         embed.remove_all_except(word_vectors_0, train_loader.unique_words)
 
-        word_vectors = DenseHyponymMatrices("data/hyponyms/dm-25d-glove-wn_train_lemma_pos.json")
+        hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", train_loader.unique_words)
+
+        word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
         word_vectors.remove_all_except(train_loader.unique_words)
         word_vectors.flatten()
         word_vectors.generate_missing_vectors(train_loader.unique_words, word_vectors_0)
@@ -310,6 +312,17 @@ class BasicProperties(unittest.TestCase):
                                                validation_data_loader=self.train_loader)
                 mike_net.unlock()
                 mike_net.train(100)
+
+    def test_runtime_saves_each_epoch(self):
+        train_save_path = 'data/test_data/test_model'
+
+        with TestTeardown(train_save_path):
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           classifier_model=EntailmentTransformer,
+                                           validation_data_loader=self.train_loader)
+            self.assertEqual(mike_net.info.runtime, 0)
+            mike_net.train(10)
+            self.assertGreater(mike_net.info.runtime, 0)
 
 
 if __name__ == '__main__':

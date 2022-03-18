@@ -389,6 +389,14 @@ class ProcessedLoad_POS(unittest.TestCase):
         self.test_loader.load_sequential(50)
         self.assertEqual(self.test_loader._batch_index, 150)
 
+    def test_counting_lines_correct_file(self):
+        train_path = "../data/snli_1.0/snli_1.0_train.jsonl"
+        train_loader = SNLI_DataLoader_POS_Processed(train_path)
+
+        train_loader._batch_index = len(train_loader) - 9
+        train_loader.load_sequential(256).to_model_data()
+        train_loader.load_sequential(256).to_model_data()
+
 
 class ProcessedFileWriting_POS(unittest.TestCase):
     test_loader = SNLI_DataLoader_POS_Processed("../data/snli_1.0/snli_1.0_dev.jsonl")

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os.path
 from abc import ABC, abstractmethod
 from typing import Callable
@@ -147,10 +148,13 @@ class EarlyStoppingTraining:
 class HyperParams:
     def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 5, dropout: float = 0,
                  device="cuda", learning_rate: float = 0.1, optimizer=optim.Adadelta,
+                 l2_regularisation=0, l1_regularisation=0,
                  patience=5, early_stopping_mode="moving_average"):
         # General parameters
         self.dropout = dropout
         self.learning_rate = learning_rate
+        self.l1_regularisation = l1_regularisation
+        self.l2_regularisation = l2_regularisation
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
         # Transformer parameters
@@ -162,6 +166,7 @@ class HyperParams:
         self.early_stopping_mode = early_stopping_mode
 
         # Read Only Fields
+        # self.__optimizer = optimizer
         self.__optimizer = optimizer
         self.__num_layers = num_layers
 
@@ -172,6 +177,19 @@ class HyperParams:
     @property
     def num_layers(self):
         return self.__num_layers
+
+
+# class DecoratedOptimizer(optim.Optimizer):
+#     def __init__(self, optimizer, hyper_params: HyperParams = HyperParams()):
+#         self.__optimizer = optimizer(optimizer, lr=hyper_params.learning_rate,
+#                                      weight_decay=hyper_params.l2_regularisation)
+#         self._hyper_params = {"lr": hyper_params.learning_rate, "l2": hyper_params.l2_regularisation}
+#
+#     def __getstate__(self):
+#         return {"hyper_params": self._hyper_params, "optimizer": self.__optimizer}
+#
+#     def __setstate__(self, state):
+#         self.__dict__.update(state)
 
 
 class Metrics:
@@ -601,7 +619,6 @@ class AbstractClassifierModel(ABC):
 
         # Model structure
         self.num_classes = num_classes
-        self.optimizer = hyper_parameters.optimizer
         self.max_length = input_shape[1]
 
         # Construct the model
@@ -624,13 +641,14 @@ class AbstractClassifierModel(ABC):
     def _construct_model(self, classifier_model: Callable) -> None:
         if self.is_file:
             self.load()
-            self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
+            self.optimizer = self.optimizer(self.model.parameters())
             return None
         self.model = classifier_model(self.input_shape,
                                       max_seq_len=self.max_length,
                                       hyper_parameters=self.hyper_parameters,
                                       number_of_output_classes=self.num_classes).to(self.hyper_parameters.device)
-        self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
+        self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate,
+                                        weight_decay=self.hyper_parameters.l2_regularisation)
         return None
 
     @abstractmethod

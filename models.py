@@ -39,6 +39,37 @@ class NeuralNetwork(nn.Module):
         return x
 
 
+class LSTM(nn.Module):
+    def __init__(self, data_shape, max_seq_len: int, number_of_output_classes=3, 
+                 hyper_parameters: HyperParams = HyperParams()):
+        super(LSTM, self).__init__()
+        self.hyper_parameters = hyper_parameters
+
+        # Input shape: batch_size, num_sentences, max_seq_len, embed_size
+        # Data shape: num_sentences, max_seq_len, embed_size
+        self.num_sentences, self.max_length, self.embed_size = data_shape
+        self.encoder_flattened_size = self.num_sentences * self.embed_size
+        self.hidden_size = 128
+        self.lstm_hidden_size = self.hidden_size * self.max_length
+        self.lstm = nn.LSTM(self.encoder_flattened_size, self.hidden_size, num_layers=hyper_parameters.num_layers,
+                            batch_first=True,
+                            dropout=hyper_parameters.dropout)
+        self.fc_out = nn.Linear(self.lstm_hidden_size, number_of_output_classes, bias=False)
+
+    def forward(self, x, mask):
+        x = x.masked_fill(mask == 0, 1e-20)
+
+        # Input shape: (batch_size, num_sentences, embed_size, max_length)
+        batch_size = x.shape[0]
+
+        x = x.reshape(batch_size, self.max_length, self.encoder_flattened_size)
+        x, _ = self.lstm(x)
+
+        x = x.reshape(batch_size, self.lstm_hidden_size)
+        x = self.fc_out(x)
+        return x
+
+
 class EntailmentTransformer(nn.Module):
     def __init__(self, data_shape, max_seq_len: int, number_of_output_classes=3,
                  hyper_parameters: HyperParams = HyperParams()):
@@ -133,8 +164,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
         if self.__training_locked:
             raise ModelAlreadyTrainedError(self.model_save_path)
 
-        training_start_time = time.perf_counter()
-
         def batch_loader(x):
             return self.data_loader.load_batch(x, mode=batch_loading_mode)
 
@@ -142,6 +171,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
         total_steps = epochs * number_of_iterations_per_epoch
         for epoch in range(epochs):
+            epoch_start_time = time.perf_counter()
             running_loss = 0.0
             running_accuracy = 0.0
             for i in range(number_of_iterations_per_epoch):
@@ -164,27 +194,23 @@ class StaticEntailmentNet(AbstractClassifierModel):
             running_loss = running_loss / number_of_iterations_per_epoch
             scores = None
 
+            epoch_end_time = time.perf_counter()
+            self.info.add_runtime(epoch_end_time - epoch_start_time)
+
             if self.model_is_validating:
                 validation_loss, _ = self.__validate()
 
                 if self.early_stopping(validation_loss):
-                    training_end_time = time.perf_counter()
-                    self.info.add_runtime(training_end_time - training_start_time)
-
                     self.save_model_training()
-
                     return None
+
                 self.early_stopping.save_trigger_times()
                 self.validation_history.save()
 
             self.history.step(float(running_loss), running_accuracy, scores)
-            self.history.write()
+            self.history.save()
 
         print('Finished Training.')
-
-        training_end_time = time.perf_counter()
-        self.info.add_runtime(training_end_time - training_start_time)
-
         self.save()
         return None
 

@@ -86,17 +86,14 @@ def area_under_roc_curve(data_path: str) -> float:
     class_labels = [class_labels[i] for i in range(len(class_labels)) if class_labels[i] != 0.5]
     del __all_predictions
 
-    print(class_labels)
-    print(predictions)
     fpr, tpr, thresholds = roc_curve(class_labels, predictions)
     auc = roc_auc_score(class_labels, predictions)
 
-    auc_message = f"Area under curve: {round(auc, 3)}"
+    auc_message = f"Area under curve: {round(auc, 8)}"
 
-    print(auc_message)
     fig_save_path = file_op.file_path_without_extension(data_path) + ".png"
     fig_save_path_info = file_op.child_path(data_path, 2)
-    print(fig_save_path_info)
+
     dataset = file_op.root_dir(fig_save_path_info)
     secondary_info = file_op.root_dir(file_op.child_path(fig_save_path_info, 1))
     plt.title(f"ROC curve for {dataset}, {secondary_info.upper()}")
@@ -145,6 +142,14 @@ def k_e_from_two_vectors(vector1, vector2) -> float:
     return result
 
 
+def k_a_from_two_vectors(vector1, vector2) -> float:
+    if vector1 is None or vector2 is None:
+        return None
+
+    result = hl.k_ba(vector1, vector2, tol=1e-6)
+    return result
+
+
 def efficient_vectors_from_batch(batch, word_vectors):
     vectors = [[word_vectors.safe_lookup(pair[1])
                   for pair in sentence if word_vectors.safe_lookup(pair[1]) is not None]
@@ -166,7 +171,7 @@ def hadamard_list_of_vectors(vectors):
     return out
 
 
-def snli_pos_k_e(data_loader, word_vectors, batch_size: int=256):
+def snli_pos_stats(data_loader, word_vectors, batch_size: int=256):
     batch = data_loader.load_sequential(batch_size).to_model_data(["sentence1_parse", "sentence2_parse", "gold_label"])
 
     batch_1 = [sentence[0] for sentence in batch]
@@ -186,19 +191,13 @@ def snli_pos_k_e(data_loader, word_vectors, batch_size: int=256):
            for tree1, tree2, label in zip(batch_1, batch_2, labels)]
     k_e = [[str(line[0]), line[1]] for line in k_e if line[0] is not None]
 
-    # print('-' * 40)
-    # print("Predictions: ")
-    # print(batch_1)
-    # print('-'*40)
-    # print("Labels")
-    # print(k_e)
-    # print('-' * 40)
-    #
-    # raise ZeroDivisionError
-    return k_e
+    k_a = [[k_a_from_two_vectors(tree1.data[0], tree2.data[0]), label] for tree1, tree2, label in zip(batch_1, batch_2, labels)]
+    k_a = [[str(line[0]), line[1]] for line in k_a if line[0] is not None]
+
+    return k_e, k_a
 
 
-def ks2016_pos_k_e(data_loader, word_vectors, batch_size: int=256, tags=None):
+def ks2016_pos_stats(data_loader, word_vectors, batch_size: int=256, tags=None):
     batch = data_loader.load_sequential(batch_size)
 
     batch_1 = [sentence[0] for sentence in batch]
@@ -232,17 +231,23 @@ def test_snli(data_path: str, batch_size: int=256):
 
     word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
 
-    data_file_path = "data/compositional_analysis/train/k_e/pos_tree2.csv"
+    data_file_path_k_e = "data/compositional_analysis/train/k_e/pos_tree2.csv"
 
-    data_writer = file_op.CSV_Writer(data_file_path, header=("k_e", "label"),
-                                     delimiter=',')
+    data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"),
+                                         delimiter=',')
 
-    if data_writer.file_exists:
+    data_file_path_k_a = "data/compositional_analysis/train/k_a/pos_tree2.csv"
+
+    data_writer_k_a = file_op.CSV_Writer(data_file_path_k_a, header=("k_a", "label"),
+                                         delimiter=',')
+
+    if data_writer_k_e.file_exists or data_writer_k_a.file_exists:
         user_response = input("Do you want to continue, file already exists! ")
         if not user_response.lower() in ("y", "yes", "yh"):
             raise FileExistsError
 
-    file_op.make_empty_file(data_file_path)
+    file_op.make_empty_file(data_file_path_k_e)
+    file_op.make_empty_file(data_file_path_k_a)
 
     num_iters = len(data_loader) // batch_size
     last_batch_size = len(data_loader) - batch_size * num_iters - 1
@@ -250,8 +255,9 @@ def test_snli(data_path: str, batch_size: int=256):
     batch_sizes = [batch_size for _ in range(num_iters)] + [last_batch_size]
 
     for batch_size in batch_sizes:
-        k_e = snli_pos_k_e(data_loader, word_vectors, batch_size)
-        data_writer.append_lines(k_e)
+        k_e, k_a = snli_pos_stats(data_loader, word_vectors, batch_size)
+        data_writer_k_e.append_lines(k_e)
+        data_writer_k_a.append_lines(k_a)
 
 
 def test_ks2016(data_path: str, tags_enabled=True):
@@ -275,25 +281,33 @@ def test_ks2016(data_path: str, tags_enabled=True):
     hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", sentences0.unique_words)
 
     word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
-    word_vectors.flatten()
-    word_vectors.square()
 
-    data_file_path = f"data/compositional_analysis/KS2016/{ks_type}/{tags_enabled}/k_e/pos_tree2.csv"
+    data_file_path_k_e = f"data/compositional_analysis/KS2016/{ks_type}/{tags_enabled}/k_e/pos_tree2.csv"
 
-    data_writer = file_op.CSV_Writer(data_file_path,
-                                     header=("k_e", "label"),
-                                     delimiter=',')
+    data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e,
+                                         header=("k_e", "label"),
+                                         delimiter=',')
+
+    data_file_path_k_a = f"data/compositional_analysis/KS2016/{ks_type}/{tags_enabled}/k_a/pos_tree2.csv"
+
+    data_writer_k_a = file_op.CSV_Writer(data_file_path_k_a,
+                                         header=("k_e", "label"),
+                                         delimiter=',')
+
     batch_size = 256
 
-    if data_writer.file_exists:
+    if data_writer_k_e.file_exists or data_writer_k_a.file_exists:
         user_response = input("Do you want to continue, file already exists! ")
         if not user_response.lower() in ("y", "yes", "yh"):
             raise FileExistsError
 
-    dir_path = file_op.parent_path(data_file_path) + '/'
-    print(dir_path)
+    dir_path = file_op.parent_path(data_file_path_k_e) + '/'
     file_op.make_dir(dir_path=dir_path)
-    file_op.make_empty_file(data_file_path)
+    file_op.make_empty_file(data_file_path_k_e)
+
+    dir_path = file_op.parent_path(data_file_path_k_a) + '/'
+    file_op.make_dir(dir_path=dir_path)
+    file_op.make_empty_file(data_file_path_k_a)
 
     num_iters = len(data_loader) // batch_size
     last_batch_size = len(data_loader) - batch_size * num_iters - 1
@@ -301,14 +315,15 @@ def test_ks2016(data_path: str, tags_enabled=True):
     batch_sizes = [batch_size for _ in range(num_iters)] + [last_batch_size]
 
     for batch_size in batch_sizes:
-        k_e = ks2016_pos_k_e(data_loader, word_vectors, batch_size, tags=tags)
-        data_writer.append_lines(k_e)
+        k_e, k_a = ks2016_pos_stats(data_loader, word_vectors, batch_size, tags=tags)
+        data_writer_k_e.append_lines(k_e)
+        data_writer_k_a.append_lines(k_e)
 
 
 def testing(data_path: str):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
 
-    word_vectors_0 = embed.Embedding2('common_crawl_840', d_emb=300, show_progress=True, default='zero')
+    word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
 
     words = get_test_words("data/word-sim")
@@ -317,7 +332,7 @@ def testing(data_path: str):
     unique_words = word_vectors_0.words
     vectors = word_vectors_0.dict
 
-    hyponyms_all = Hyponyms("data/hyponyms/300cc840_hyponyms_wordsim.json", unique_words)
+    hyponyms_all = Hyponyms("data/hyponyms/25d_hyponyms_wordsim.json", unique_words)
     word_vectors = DenseHyponymMatrices2(hyponyms=hyponyms_all, embedding_vectors=vectors)
 
     word_vectors.flatten()
@@ -336,7 +351,7 @@ def testing2(data_path: str):
 
     word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
 
-    k_e = snli_pos_k_e(data_loader, word_vectors, 1)
+    k_e = snli_pos_stats(data_loader, word_vectors, 1)
     print(k_e)
 
 
@@ -356,11 +371,13 @@ def ks_test_all():
 
 
 def main():
-    test_snli("data/snli_1.0/snli_1.0_train.jsonl")
-    area_under_roc_curve("data/compositional_analysis/train/k_e/pos_tree2.csv")
-    scatter("data/compositional_analysis/train/k_e/pos_tree2.csv")
-    # testing("data/word_sims_vectors/300cc840_glove_hypo_wordsim.csv")
-
+    # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
+    # area_under_roc_curve("data/compositional_analysis/train/k_e/pos_tree2.csv")
+    # scatter("data/compositional_analysis/train/k_e/pos_tree2.csv")
+    testing("data/word_sims_vectors/25_glove_hypo_wordsim.csv")
+    pass
+    # area_under_roc_curve("data/compositional_analysis/KS2016/svo/True/k_e/pos_tree2.csv")
+    # scatter("data/compositional_analysis/KS2016/svo/True/k_e/pos_tree2.csv")
     # testing2("data/snli_1.0/snli_1.0_train.jsonl")
     # ks_test_all()
 

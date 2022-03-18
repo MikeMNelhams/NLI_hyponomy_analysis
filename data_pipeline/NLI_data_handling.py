@@ -358,6 +358,13 @@ class DictBatch(Batch):
         return SentenceBatch([get_sentence(line) for line in self.data])
 
     def to_labels_batch(self, label_key_name='gold_label') -> GoldLabelBatch:
+        for line in self.data:
+            try:
+                line["gold_label"]
+            except Exception as e:
+                print("bad batch: ", line)
+                raise e
+
         labels = GoldLabelBatch([line[label_key_name] for line in self.data])
         return labels
 
@@ -452,11 +459,6 @@ class NLI_DataLoader_abc(ABC):
 
         file_op.make_dir(self.file_dir_path)
         return None
-
-    def _get_number_lines(self) -> int:
-        """ Run at init"""
-        number_of_lines = file_op.count_file_lines(self.file_path)
-        return number_of_lines
 
     def is_valid_batch_mode(self, mode: str) -> bool:
         return mode in self.batch_modes
@@ -618,7 +620,7 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
         super(SNLI_DataLoader_Unclean, self).__init__(file_path, max_sequence_length=max_sequence_length)
 
         # Run once at runtime, rather than multiple times at call.
-        self.file_size = self._get_number_lines()
+        self.file_size = file_op.count_file_lines(file_path)
 
         if max_sequence_length is None:
             self.max_words_in_sentence_length = self._get_max_sequence_length()
@@ -650,7 +652,7 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
         self._max_sentence_len_writer = file_op.TextWriterSingleLine(self.max_len_file_path)
 
         # Run once at runtime, rather than multiple times at call.
-        self.file_size = self._get_number_lines()
+        self.file_size = file_op.count_file_lines(self.processed_file_path)
 
         if not self.processed_file_exists:
             file_op.make_empty_file_safe(self.processed_file_path)
@@ -734,7 +736,7 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
 
         self._batch_index = 0
 
-        self.file_size = self._get_number_lines()
+        self.file_size = file_op.count_file_lines(self.processed_file_path)
 
         if not self.processed_file_exists:
             file_op.make_empty_file_safe(self.processed_file_path)

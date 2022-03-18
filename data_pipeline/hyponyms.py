@@ -116,8 +116,12 @@ class DenseHyponymMatrices2:
                 vectors[word] = np.outer(v, v)
             else:
                 for hyp in hyp_dict[word]:
-                    if hyp not in hypo_vectors:
-                        continue
+                    try:
+                        if hyp not in hypo_vectors:
+                            continue
+                    except Exception as e:
+                        print(hyp)
+                        raise e
                     v = hypo_vectors[hyp]  # make sure I alter the Hearst code
                     vv = np.outer(v, v)
                     vectors[word] += vv
