@@ -25,8 +25,8 @@ from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser, Proc
 
 class BatchSizeTooLargeError(Exception):
     """ When the specified batch size > file size"""
-    def __init__(self, batch_size: int, file_size):
 
+    def __init__(self, batch_size: int, file_size):
         message = f"The batch size \'{batch_size}\' is greater than the file_size \'{file_size}\'."
         super().__init__(message)
 
@@ -64,6 +64,7 @@ class Batch:
 
 class SentenceBatch(Batch):
     """ Loaded with useful stats properties"""
+
     def __init__(self, list_of_sentences: List[str]):
         super().__init__(list_of_sentences)
         self.data = list_of_sentences
@@ -239,28 +240,12 @@ class EntailmentModelBatch:
         if unknown_word_vector is None:
             unknown_word_vector = padding_list
 
-        def get_vector(word: Any) -> list:
-            try:
-                if word == 0:
-                    return padding_list
-                word_vector = word_vectors.lookup(word)
-                # Lookup returns UNK/PAD if word is OOV
-                if word_vector is None:
-                    return list(unknown_word_vector)
-            except ValueError:
-                print("word:", word)
-                raise ValueError
-            return list(word_vector)
-
-        def pad_row(row: str, __pad_value=pad_value) -> List:
-            padded = self.pad(row.split(), self.__max_sequence_len, pad_value=__pad_value)
-            return padded
-
-        padded_tensor = torch.tensor(np.array([[get_vector(word) for word in pad_row(row)]
-                                     for row in data_to_process]), dtype=torch.float32)
+        padded_tensor = torch.tensor([[self.__get_vector(word, word_vectors, padding_list, unknown_word_vector)
+                                       for word in self.__pad_row(row, pad_value)]
+                                      for row in data_to_process], dtype=torch.float32)
 
         padding_mask_tensor = torch.tensor([[1 if word != 0 else 0
-                                            for word in pad_row(row, 0)]
+                                             for word in self.__pad_row(row, pad_value)]
                                             for row in data_to_process])
 
         desired_mask_shape = (-1, -1, embed_vector_length)
@@ -326,6 +311,20 @@ class EntailmentModelBatch:
         if one_hot_labels.shape[0] == 1:
             return torch.squeeze(one_hot_labels)
         return one_hot_labels
+
+    @staticmethod
+    def __get_vector(word: Any, word_vectors, padding_list, unknown_word_vector) -> list:
+        if word == 0:
+            return padding_list
+        word_vector = word_vectors.lookup(word)
+        # Lookup returns UNK/PAD if word is OOV
+        if word_vector is None:
+            return list(unknown_word_vector)
+        return list(word_vector)
+
+    def __pad_row(self, row: str, pad_value=0) -> List:
+        padded = self.pad(row.split(), self.__max_sequence_len, pad_value=pad_value)
+        return padded
 
 
 class DictBatch(Batch):
@@ -527,7 +526,7 @@ class NLI_DataLoader_abc(ABC):
 
         return DictBatch(content, max_sequence_len=self.max_words_in_sentence_length)
 
-    def load_random(self, batch_size: int=256) -> DictBatch:
+    def load_random(self, batch_size: int = 256) -> DictBatch:
         """ O(File_size) load_as_dataframe random lines"""
         # Uses reservoir sampling.
         # There is actually a FASTER way to do this using more complicated sampling:
@@ -549,7 +548,7 @@ class NLI_DataLoader_abc(ABC):
 
         return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
 
-    def load_sequential(self, batch_size: int=256, from_start: bool = False) -> DictBatch:
+    def load_sequential(self, batch_size: int = 256, from_start: bool = False) -> DictBatch:
         if from_start:
             self._batch_index = 0
 
@@ -635,7 +634,7 @@ class SNLI_DataLoader_Unclean(NLI_DataLoader_abc):
 
 class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
     def __init__(self, file_path: str, processing_mode: str, max_sequence_length=None,
-                 processing_batch_size: int =256):
+                 processing_batch_size: int = 256):
         super(SNLI_DataLoader_Processed, self).__init__(file_path, max_sequence_length=max_sequence_length)
 
         self.__processing_type = ProcessingSynonyms.map_processing_mode(processing_mode)

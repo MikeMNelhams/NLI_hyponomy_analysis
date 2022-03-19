@@ -39,11 +39,11 @@ def main():
                                    hyper_parameters=params, classifier_model=LSTM,
                                    validation_data_loader=validation_loader)
     mike_net.count_parameters()
-    mike_net.unlock()
-    mike_net.train(epochs=100, batch_size=1024, print_every=1)
+    # mike_net.unlock()
+    # mike_net.train(epochs=100, batch_size=1024, print_every=1)
     mike_net.plot_loss()
     mike_net.plot_accuracy()
-    mike_net.test(test_loader)
+    # mike_net.test(test_loader)
 
 
 if __name__ == '__main__':
