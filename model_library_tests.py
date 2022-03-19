@@ -13,6 +13,7 @@ import model_library as ml
 from models import StaticEntailmentNet, NeuralNetwork, EntailmentTransformer, HyperParams
 import model_errors
 import torch.optim as optim
+import numpy as np
 
 
 class TestTeardown:
@@ -278,6 +279,46 @@ class BasicProperties(unittest.TestCase):
                 StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                     hyper_parameters=params, classifier_model=NeuralNetwork,
                                     validation_data_loader=self.validation_loader)
+
+    def test_loss_comparison_restored_STRICT(self):
+        train_save_path = 'data/test_data/test_model'
+        # Low patience and with strict early stopping, Likely to early stop.
+        params = ml.HyperParams(learning_rate=0.5, patience=6, optimizer=optim.Adadelta, early_stopping_mode="strict")
+
+        with TestTeardown(train_save_path):
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer,
+                                           validation_data_loader=self.train_loader)
+
+            self.assertEqual(mike_net.early_stopping.loss_comparison, np.inf)
+            mike_net.train(10)
+            final_loss = mike_net.validation_history.loss[-1]
+            self.assertAlmostEqual(mike_net.early_stopping.loss_comparison, final_loss)
+
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer,
+                                           validation_data_loader=self.train_loader)
+            self.assertAlmostEqual(mike_net.early_stopping.loss_comparison, final_loss)
+
+    def test_loss_comparison_restored_MIN(self):
+        train_save_path = 'data/test_data/test_model'
+        # Low patience and with strict early stopping, Likely to early stop.
+        params = ml.HyperParams(learning_rate=0.5, patience=6, optimizer=optim.Adadelta, early_stopping_mode="minimum")
+
+        with TestTeardown(train_save_path):
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer,
+                                           validation_data_loader=self.train_loader)
+
+            self.assertEqual(mike_net.early_stopping.loss_comparison, np.inf)
+            mike_net.train(10)
+            final_loss = min(mike_net.validation_history.loss)
+            self.assertAlmostEqual(mike_net.early_stopping.loss_comparison, final_loss)
+
+            mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
+                                           hyper_parameters=params, classifier_model=EntailmentTransformer,
+                                           validation_data_loader=self.train_loader)
+            self.assertAlmostEqual(mike_net.early_stopping.loss_comparison, final_loss)
 
     def test_additional_info_init_exists(self):
         train_save_path = 'data/test_data/test_load'

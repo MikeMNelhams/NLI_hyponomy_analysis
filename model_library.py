@@ -1,8 +1,7 @@
 from __future__ import annotations
 import os.path
 from abc import ABC, abstractmethod
-from typing import Callable
-from typing import Dict
+from typing import Callable, Dict, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,14 +33,17 @@ class EarlyStoppingTraining:
     """ https://clay-atlas.com/us/blog/2021/08/25/pytorch-en-early-stopping/ """
     modes = ("strict", "moving_average", "minimum", "none")
 
-    def __init__(self, save_checkpoint: Callable, file_path: str, patience: int = 5, mode: str ="minimum"):
+    def __init__(self, save_checkpoint: Callable, file_path: str,
+                 patience: int = 5, validation_history: Union[None, History]=None, mode: str ="minimum"):
         self.step = self.__select_measure(mode)
 
         self.__assert_valid_patience(patience)
 
         self.patience = patience
         self.triggers_file_writer = file_op.TextWriterSingleLine(file_path)
-        self.loss_comparison = np.inf
+
+        val_history = validation_history if len(validation_history) != 0 else None
+        self.loss_comparison = self.__calculate_loss_comparison(mode, val_history)
 
         self.trigger_times = 0
         if self.triggers_file_writer.file_exists:
@@ -76,7 +78,30 @@ class EarlyStoppingTraining:
         if mode == "none":
             return self.__none
 
+        if mode == "strict":
+            return self.__strict
+
         return self.__minimum
+
+    def __calculate_loss_comparison(self, mode, validation_history: Union[None, History]=None):
+        self.assert_valid_mode(mode)
+
+        if validation_history is None:
+            return np.inf
+
+        if mode == "moving_average":
+            average = 0
+            for val_loss in validation_history.loss:
+                average = (val_loss + average) / 2
+            return average
+
+        if mode == "minimum":
+            return min(validation_history.loss)
+
+        if mode == "strict":
+            return validation_history.loss[-1]
+
+        return np.inf
 
     def __strict(self, loss) -> bool:
         """ loss comparison = previous loss"""
@@ -179,19 +204,6 @@ class HyperParams:
         return self.__num_layers
 
 
-# class DecoratedOptimizer(optim.Optimizer):
-#     def __init__(self, optimizer, hyper_params: HyperParams = HyperParams()):
-#         self.__optimizer = optimizer(optimizer, lr=hyper_params.learning_rate,
-#                                      weight_decay=hyper_params.l2_regularisation)
-#         self._hyper_params = {"lr": hyper_params.learning_rate, "l2": hyper_params.l2_regularisation}
-#
-#     def __getstate__(self):
-#         return {"hyper_params": self._hyper_params, "optimizer": self.__optimizer}
-#
-#     def __setstate__(self, state):
-#         self.__dict__.update(state)
-
-
 class Metrics:
     def __init__(self, predictions: torch.Tensor, labels: torch.Tensor):
         self.confusion_mtrx = confusion_matrix(predictions, labels)
@@ -267,7 +279,7 @@ class MetricEvaluator:
 
 class History:
     """ Uses a csv file to write its loss and accuracy"""
-    def __init__(self, file_path: str, decimal_places: int = 4, label="training"):
+    def __init__(self, file_path: str, decimal_places: int = -1, label="training"):
         self.__file_path = file_path
         self.__decimal_places = decimal_places
 
@@ -314,8 +326,10 @@ class History:
         return None
 
     def step(self, loss, accuracy, additional_metrics: Dict[str, float]=None) -> None:
-        self.loss.append(round(loss, self.decimal_places))
-        self.accuracy.append(round(accuracy, self.decimal_places))
+        rounded_loss = round(loss, self.decimal_places) if self.decimal_places != -1 else loss
+        rounded_accuracy = round(accuracy, self.decimal_places) if self.decimal_places != -1 else accuracy
+        self.loss.append(rounded_loss)
+        self.accuracy.append(rounded_accuracy)
 
         if additional_metrics is not None:
             for key, value in additional_metrics.items():

@@ -149,6 +149,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
             self.early_stopping = EarlyStoppingTraining(save_checkpoint=self.save_checkpoint,
                                                         file_path=self._file_dir_path + "trigger_times.txt",
                                                         patience=self.hyper_parameters.patience,
+                                                        validation_history=self.validation_history,
                                                         mode=self.hyper_parameters.early_stopping_mode)
 
     def unlock(self) -> None:
