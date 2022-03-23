@@ -154,10 +154,11 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
     def unlock(self) -> None:
         self.__training_locked = False
+        self.model.train()
         return None
 
     def train(self, epochs: int, batch_size: int=256, criterion=nn.CrossEntropyLoss(), batch_loading_mode="sequential",
-              print_every: int = 1) -> None:
+              print_every: int = 1, plotting=True) -> None:
 
         if self.model_is_validating and self.early_stopping.trigger_times == self.hyper_parameters.patience:
             raise ModelAlreadyTrainedError(self.model_save_path)
@@ -176,9 +177,9 @@ class StaticEntailmentNet(AbstractClassifierModel):
             running_loss = 0.0
             running_accuracy = 0.0
             for i in range(number_of_iterations_per_epoch):
-                percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i)) / total_steps, 2)
                 should_print = i % print_every == print_every - 1
                 if should_print:
+                    percentage_complete = round((100 * (epoch * number_of_iterations_per_epoch + i)) / total_steps, 2)
                     print(f'Training batch: {i + 1} of {number_of_iterations_per_epoch}.\t {percentage_complete}% done')
                 loss, accuracy = self.__train_batch(batch_loader=batch_loader,
                                                             batch_size=batch_size, criterion=criterion)
@@ -198,18 +199,21 @@ class StaticEntailmentNet(AbstractClassifierModel):
             epoch_end_time = time.perf_counter()
             self.info.add_runtime(epoch_end_time - epoch_start_time)
 
+            self.history.step(float(running_loss), running_accuracy, scores)
+
+            validation_loss = None
             if self.model_is_validating:
                 validation_loss, _ = self.__validate()
 
-                if self.early_stopping(validation_loss):
-                    self.save_model_training()
-                    return None
+            self.save_model_history()
 
+            if plotting:
+                self.plot_accuracy()
+                self.plot_loss()
+
+            if self.model_is_validating and self.early_stopping(validation_loss):
                 self.early_stopping.save_trigger_times()
-                self.validation_history.save()
-
-            self.history.step(float(running_loss), running_accuracy, scores)
-            self.history.save()
+                return None
 
         print('Finished Training.')
         self.save()
@@ -311,29 +315,31 @@ class StaticEntailmentNet(AbstractClassifierModel):
             self.validation_history.save()
         return None
 
-    def save_model_training(self) -> None:
-        super().save_model_training()
+    def save_model_history(self) -> None:
+        super().save_model_history()
         if self.model_is_validating:
             self.validation_history.save()
         return None
 
-    def plot_accuracy(self, title="model accuracy over time") -> plt.axes:
+    def plot_accuracy(self, title="Model accuracy over time") -> None:
         ax = super().plot_accuracy(title=title)
         try:
-            ax = self.validation_history.plot_accuracy(title=title, axes=ax)
+            self.validation_history.plot_accuracy(title=title, axes=ax)
         except AttributeError:
             pass
         plt.savefig(self._file_dir_path + title.strip().lower())
-        return ax
+        plt.close()
+        return None
 
-    def plot_loss(self, title="model loss over time") -> plt.axes:
+    def plot_loss(self, title="Model loss over time") -> None:
         ax = super().plot_loss(title=title)
         try:
-            ax = self.validation_history.plot_loss(title=title, axes=ax)
+            self.validation_history.plot_loss(title=title, axes=ax)
         except AttributeError:
             pass
         plt.savefig(self._file_dir_path + title.strip().lower())
-        return ax
+        plt.close()
+        return None
 
     @staticmethod
     def __print_step(epoch, batch_step, loss, accuracy):

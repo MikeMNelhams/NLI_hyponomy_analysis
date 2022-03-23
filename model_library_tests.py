@@ -68,29 +68,19 @@ class NeuralNet(unittest.TestCase):
 
     def test_testing(self):
         train_small_path = "data/snli_small/snli_small1_train.jsonl"
-        validation_small_path = "data/snli_small/snli_small1_dev.jsonl"
 
         train_loader = SNLI_DataLoader_POS_Processed(train_small_path)
-        validation_loader = SNLI_DataLoader_POS_Processed(validation_small_path)
 
         word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
         word_vectors_0.load_memory()
-        embed.remove_all_except(word_vectors_0, train_loader.unique_words)
+        word_vectors_0.remove_all_except(train_loader.unique_words)
 
-        hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", train_loader.unique_words)
+        params = HyperParams(heads=5, learning_rate=0.3, dropout=0.5, optimizer=optim.Adadelta,
+                             patience=10, early_stopping_mode="minimum", device='cpu', num_layers=3)
 
-        word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
-        word_vectors.remove_all_except(train_loader.unique_words)
-        word_vectors.flatten()
-        word_vectors.generate_missing_vectors(train_loader.unique_words, word_vectors_0)
-
-        params = HyperParams(heads=5, learning_rate=0.5, dropout=0.3, optimizer=optim.Adadelta,
-                             patience=6, early_stopping_mode="minimum", device='cpu')
-
-        mike_net = StaticEntailmentNet(word_vectors, train_loader,
+        mike_net = StaticEntailmentNet(word_vectors_0, train_loader,
                                        file_path='data/test_data/test_load.pth',
-                                       classifier_model=NeuralNetwork, hyper_parameters=params,
-                                       validation_data_loader=validation_loader)
+                                       classifier_model=NeuralNetwork, hyper_parameters=params)
 
         loss, acc = mike_net.test(self.train_loader)
         print(f'LOSS: {loss}, ACC: {acc}')
@@ -155,13 +145,13 @@ class NeuralNet(unittest.TestCase):
 
 class Transformer(unittest.TestCase):
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
-    train_loader = SNLI_DataLoader_Unclean(train_small_path)
-    validation_loader = SNLI_DataLoader_Unclean(train_small_path)
+    train_loader = SNLI_DataLoader_POS_Processed(train_small_path)
 
     load_dotenv()
 
-    word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors.load_memory()
+    word_vectors.remove_all_except(train_loader.unique_words)
 
     def test_train(self):
         train_save_path = 'data/test_data/test_train3'
@@ -177,8 +167,11 @@ class Transformer(unittest.TestCase):
             self.assertLess(mike_net.info.runtime, 10)  # Red flag if it takes longer than 10 seconds.
 
     def test_loading(self):
-        mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader,
-                                       file_path='data/test_data/test_load.pth',
+        params = HyperParams(heads=5, learning_rate=0.3, dropout=0.5,
+                             patience=6, early_stopping_mode="minimum", device='cpu', num_layers=3)
+
+        mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, hyper_parameters=params,
+                                       file_path='data/test_data/test_load_transformer.pth',
                                        classifier_model=EntailmentTransformer)
 
         self.assertGreater(mike_net.history.accuracy[-1], 0.3)
@@ -186,8 +179,13 @@ class Transformer(unittest.TestCase):
         self.assertLess(mike_net.info.runtime, 10)  # Red flag if it takes longer than 10 seconds.
 
     def test_testing(self):
-        mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path='data/test_data/test_load_transformer.pth',
-                                       classifier_model=EntailmentTransformer, validation_data_loader=self.train_loader)
+        params = HyperParams(heads=5, learning_rate=0.3, dropout=0.5,
+                             patience=6, early_stopping_mode="minimum", device='cpu', num_layers=3)
+
+        mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader,
+                                       file_path='data/test_data/test_load_transformer.pth',
+                                       hyper_parameters=params, classifier_model=EntailmentTransformer,
+                                       validation_data_loader=self.train_loader)
 
         loss, acc = mike_net.test(self.train_loader)
         print(f'LOSS: {loss}, ACC: {acc}')
@@ -219,13 +217,14 @@ class Transformer(unittest.TestCase):
 
 class BasicProperties(unittest.TestCase):
     train_small_path = "data/snli_small/snli_small1_train.jsonl"
-    train_loader = SNLI_DataLoader_Unclean(train_small_path)
-    validation_loader = SNLI_DataLoader_Unclean(train_small_path)
+    train_loader = SNLI_DataLoader_POS_Processed(train_small_path)
+    validation_loader = SNLI_DataLoader_POS_Processed(train_small_path)
 
     load_dotenv()
 
-    word_vectors = embed.GloveEmbedding('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors.load_memory()
+    word_vectors.remove_all_except(train_loader.unique_words)
 
     def test_retrain_locked(self):
         train_save_path = 'data/test_data/test_load'
@@ -234,7 +233,7 @@ class BasicProperties(unittest.TestCase):
             params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
 
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
-                                           hyper_parameters=params, classifier_model=EntailmentTransformer)
+                                           hyper_parameters=params, classifier_model=NeuralNetwork)
             mike_net.train(epochs=100, print_every=10)
 
     def test_retrain_unlocked(self):
@@ -322,12 +321,13 @@ class BasicProperties(unittest.TestCase):
 
     def test_additional_info_init_exists(self):
         train_save_path = 'data/test_data/test_load'
-        params = ml.HyperParams(heads=5, learning_rate=1, dropout=0.3, optimizer=optim.Adadelta)
+        params = HyperParams(heads=5, learning_rate=0.3, dropout=0.5, optimizer=optim.Adadelta,
+                             patience=10, early_stopping_mode="minimum", device='cpu', num_layers=3)
         mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
-                                       hyper_parameters=params, classifier_model=EntailmentTransformer)
+                                       hyper_parameters=params, classifier_model=NeuralNetwork)
         self.assertTrue(file_op.is_file(train_save_path + "/info.json"))
         self.assertGreater(mike_net.info.runtime, 0)
-        self.assertEqual(32, mike_net.info["max_length"])
+        self.assertEqual(25, mike_net.info["max_length"])
 
     def test_additional_info_init(self):
         train_save_path = 'data/test_data/test_model'
@@ -337,14 +337,14 @@ class BasicProperties(unittest.TestCase):
         with TestTeardown(train_save_path):
             mike_net = StaticEntailmentNet(self.word_vectors, self.train_loader, file_path=train_save_path + '.pth',
                                            hyper_parameters=params, classifier_model=EntailmentTransformer,
-                                           validation_data_loader=self.train_loader)
+                                           validation_data_loader=self.validation_loader)
             self.assertTrue(file_op.is_file(train_save_path + "/info.json"))
             self.assertEqual(mike_net.info.runtime, 0)
-            self.assertEqual(26, mike_net.info["max_length"])
+            self.assertEqual(25, mike_net.info["max_length"])
             mike_net.train(200)
 
             self.assertGreater(mike_net.info.runtime, 0)
-            self.assertEqual(26, mike_net.info["max_length"])
+            self.assertEqual(25, mike_net.info["max_length"])
             self.assertGreater(mike_net.early_stopping.trigger_times, 0)
 
             with self.assertRaises(model_errors.ModelAlreadyTrainedError):

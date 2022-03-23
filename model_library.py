@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os.path
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Union
+from typing import Callable, Dict, Union, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,16 +17,75 @@ from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import NLI_DataLoader
 
 from sklearn.metrics import confusion_matrix, accuracy_score
 
+
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
 #   Paper: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
 
 
-def method_print_decorator(func: callable, symbol='-', number_of_symbol_per_line: int=40) -> callable:
+def method_print_decorator(func: callable, symbol='-', number_of_symbol_per_line: int = 40) -> callable:
     def wrapper(*args, **kwargs):
-        print(symbol*number_of_symbol_per_line)
+        print(symbol * number_of_symbol_per_line)
         func(*args, **kwargs)
-        print(symbol*number_of_symbol_per_line)
+        print(symbol * number_of_symbol_per_line)
+
     return wrapper
+
+
+class Checkpoint:
+    def __init__(self, model, optimizer: optim.Optimizer):
+        self.state_dict = model.state_dict()
+        self.optimizer = optimizer.state_dict()
+
+    def __getstate__(self):
+        return {"state_dict": self.state_dict, "optimizer": self.optimizer}
+
+    def __setstate__(self, state):
+        self.optimizer = state["optimizer"]
+        self.state_dict = state["state_dict"]
+
+    def __repr__(self):
+        return str(self.__getstate__())
+
+    def save(self, file_path: str) -> None:
+        state = self.__getstate__()
+        torch.save(state, file_path)
+        return None
+
+    def safe_save(self, file_path: str) -> None:
+        if file_op.is_file(file_path):
+            raise FileExistsError
+        self.save(file_path)
+        return None
+
+    def apply(self, model, optimizer: optim.Optimizer) -> (Any, optim.Optimizer):
+        """ Apply the checkpoint saved values to instances of models or optimizers """
+        model.load_state_dict(self.state_dict)
+
+        if self.is_legacy_checkpoint:
+            self.optimizer = optimizer.state_dict()
+        else:
+            optimizer.load_state_dict(self.optimizer)
+        return model, optimizer
+
+    @classmethod
+    def load_checkpoint(cls, file_path: str) -> Checkpoint:
+        if not file_op.is_file(file_path):
+            raise FileNotFoundError
+        state = torch.load(file_path)
+        checkpoint = cls.__new__(cls)
+        if "state_dict" not in state or "optimizer" not in state:
+            checkpoint.state_dict = state
+            checkpoint.optimizer = None
+            return checkpoint
+
+        checkpoint.state_dict = state["state_dict"]
+        checkpoint.optimizer = state["optimizer"]
+        return checkpoint
+
+    @property
+    def is_legacy_checkpoint(self):
+        """Old checkpoints were stored purely as state dicts, not {state_dict, optimizer}"""
+        return self.optimizer is None
 
 
 class EarlyStoppingTraining:
@@ -34,7 +93,7 @@ class EarlyStoppingTraining:
     modes = ("strict", "moving_average", "minimum", "none")
 
     def __init__(self, save_checkpoint: Callable, file_path: str,
-                 patience: int = 5, validation_history: Union[None, History]=None, mode: str ="minimum"):
+                 patience: int = 5, validation_history: Union[None, History] = None, mode: str = "minimum"):
         self.step = self.__select_measure(mode)
 
         self.__assert_valid_patience(patience)
@@ -83,7 +142,7 @@ class EarlyStoppingTraining:
 
         return self.__minimum
 
-    def __calculate_loss_comparison(self, mode, validation_history: Union[None, History]=None):
+    def __calculate_loss_comparison(self, mode, validation_history: Union[None, History] = None):
         self.assert_valid_mode(mode)
 
         if validation_history is None:
@@ -279,6 +338,7 @@ class MetricEvaluator:
 
 class History:
     """ Uses a csv file to write its loss and accuracy"""
+
     def __init__(self, file_path: str, decimal_places: int = -1, label="training"):
         self.__file_path = file_path
         self.__decimal_places = decimal_places
@@ -325,7 +385,7 @@ class History:
             raise ValueError
         return None
 
-    def step(self, loss, accuracy, additional_metrics: Dict[str, float]=None) -> None:
+    def step(self, loss, accuracy, additional_metrics: Dict[str, float] = None) -> None:
         rounded_loss = round(loss, self.decimal_places) if self.decimal_places != -1 else loss
         rounded_accuracy = round(accuracy, self.decimal_places) if self.decimal_places != -1 else accuracy
         self.loss.append(rounded_loss)
@@ -334,7 +394,6 @@ class History:
         if additional_metrics is not None:
             for key, value in additional_metrics.items():
                 self.__additional_metrics[key].append(value)
-
         return None
 
     def track_metrics(self, metric_evaluator: MetricEvaluator) -> None:
@@ -378,11 +437,16 @@ class History:
         assert self.is_file(), FileNotFoundError
         epoch_steps = range(len(self))
 
+        figure_loss = self.loss.copy()
+
+        for i, value in enumerate(self.loss):
+            figure_loss[i] = round(value, 3)
+
         ax = axes
         if axes is None:
             fig, ax = plt.subplots()
 
-        ax.plot(epoch_steps, self.loss, label=self.label)
+        ax.plot(epoch_steps, figure_loss, label=self.label)
         ax.set_title(title)
         ax.set_xlabel('Epoch')
         ax.set_ylabel('Loss')
@@ -395,11 +459,16 @@ class History:
         assert self.is_file(), FileNotFoundError
         epoch_steps = range(len(self))
 
+        figure_acc = self.accuracy.copy()
+
+        for i, value in enumerate(self.accuracy):
+            figure_acc[i] = round(value, 3)
+
         ax = axes
         if axes is None:
             fig, ax = plt.subplots()
 
-        ax.plot(epoch_steps, self.accuracy, label=self.label)
+        ax.plot(epoch_steps, figure_acc, label=self.label)
         ax.set_title(title)
         ax.set_xlabel('Epoch')
         ax.set_ylabel('Accuracy')
@@ -533,7 +602,7 @@ class EntailmentSelfAttention(nn.Module):
 
 
 class EntailmentTransformerBlock(nn.Module):
-    def __init__(self, embed_size: int, hyper_params: HyperParams=HyperParams()):
+    def __init__(self, embed_size: int, hyper_params: HyperParams = HyperParams()):
         super(EntailmentTransformerBlock, self).__init__()
 
         self.embed_size = embed_size
@@ -564,7 +633,7 @@ class EntailmentTransformerBlock(nn.Module):
 
 
 class EntailmentEncoder(nn.Module):
-    def __init__(self, num_sentences: int, max_seq_len: int, embed_size: int=300,
+    def __init__(self, num_sentences: int, max_seq_len: int, embed_size: int = 300,
                  hyper_parameters: HyperParams = HyperParams()):
         super(EntailmentEncoder, self).__init__()
 
@@ -604,6 +673,7 @@ class EntailmentEncoder(nn.Module):
 
 class AbstractClassifierModel(ABC):
     """ Handles Model construction, loading, saving internally. You define train, test, validation, predict."""
+
     def __init__(self, train_data_loader: NLI_DataLoader_abc, file_path: str, classifier_model, embed_size: int,
                  input_shape, num_classes: int,
                  hyper_parameters: HyperParams = HyperParams()):
@@ -636,12 +706,12 @@ class AbstractClassifierModel(ABC):
         self.max_length = input_shape[1]
 
         # Construct the model
-        self.model = None
 
         if not self.info.is_file:
             self.info["max_length"] = self.max_length
             self.info.save()  # This is important for init the model.
 
+        self.model = None
         self.optimizer = hyper_parameters.optimizer
         self._construct_model(classifier_model=classifier_model)
 
@@ -653,16 +723,15 @@ class AbstractClassifierModel(ABC):
         return None
 
     def _construct_model(self, classifier_model: Callable) -> None:
-        if self.is_file:
-            self.load()
-            self.optimizer = self.optimizer(self.model.parameters())
-            return None
         self.model = classifier_model(self.input_shape,
                                       max_seq_len=self.max_length,
                                       hyper_parameters=self.hyper_parameters,
                                       number_of_output_classes=self.num_classes).to(self.hyper_parameters.device)
         self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate,
                                         weight_decay=self.hyper_parameters.l2_regularisation)
+        if self.is_file:
+            self.load()
+
         return None
 
     @abstractmethod
@@ -675,7 +744,7 @@ class AbstractClassifierModel(ABC):
 
     @abstractmethod
     def test(self, test_data_loader: NLI_DataLoader_abc,
-             test_batch_size: int=256, criterion=nn.CrossEntropyLoss()):
+             test_batch_size: int = 256, criterion=nn.CrossEntropyLoss()):
         raise NotImplementedError
 
     def count_parameters(self):
@@ -697,23 +766,28 @@ class AbstractClassifierModel(ABC):
         print('Loading model...')
         if not self.is_file:
             raise FileNotFoundError
-        self.model = torch.load(self.model_save_path)
+
+        final_checkpoint = Checkpoint.load_checkpoint(self.model_save_path)
+        final_checkpoint.apply(self.model, self.optimizer)
+
+        self.model.eval()
         self.model = self.model.to(self.hyper_parameters.device)
         print('Model loaded!')
         return None
 
     def save(self) -> None:
         self.save_checkpoint()
-        self.save_model_training()
+        self.save_model_history()
         return None
 
     def save_checkpoint(self) -> None:
         print('\033[96mSaving model checkpoint...\033[0m')  # CYAN TEXT
-        torch.save(self.model, self.model_save_path)
+        checkpoint = Checkpoint(self.model, self.optimizer)
+        checkpoint.save(self.model_save_path)
         return None
 
-    def save_model_training(self) -> None:
-        print('\033[94mSaving model training...\033[0m')  # BLUE TEXT
+    def save_model_history(self) -> None:
+        print('\033[94mSaving model history...\033[0m')  # BLUE TEXT
         self.history.save()
         self.info.save()
         return None
