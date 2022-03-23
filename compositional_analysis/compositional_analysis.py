@@ -9,7 +9,7 @@ import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch
-from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices2, Hyponyms
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, Hyponyms
 from NLI_hyponomy_analysis.data_pipeline.word_operations import find_all_pos_tags
 from parse_tree import ParseTree
 
@@ -227,16 +227,16 @@ def test_snli(data_path: str, batch_size: int=256):
     word_vectors_0.load_memory()
     word_vectors_0.remove_all_except(data_loader.unique_words)
 
-    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
+    hyponyms = Hyponyms("../data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
 
-    word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
+    word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
 
-    data_file_path_k_e = "data/compositional_analysis/train/k_e/pos_tree2.csv"
+    data_file_path_k_e = "../data/compositional_analysis/train/k_e/pos_tree2.csv"
 
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"),
                                          delimiter=',')
 
-    data_file_path_k_a = "data/compositional_analysis/train/k_a/pos_tree2.csv"
+    data_file_path_k_a = "../data/compositional_analysis/train/k_a/pos_tree2.csv"
 
     data_writer_k_a = file_op.CSV_Writer(data_file_path_k_a, header=("k_a", "label"),
                                          delimiter=',')
@@ -278,9 +278,9 @@ def test_ks2016(data_path: str, tags_enabled=True):
     word_vectors_0.load_memory()
     word_vectors_0.remove_all_except(sentences0.unique_words)
 
-    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", sentences0.unique_words)
+    hyponyms = Hyponyms("../data/hyponyms/25d_hyponyms_all.json", sentences0.unique_words)
 
-    word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
+    word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
 
     data_file_path_k_e = f"data/compositional_analysis/KS2016/{ks_type}/{tags_enabled}/k_e/pos_tree2.csv"
 
@@ -326,14 +326,14 @@ def testing(data_path: str):
     word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
 
-    words = get_test_words("data/word-sim")
+    words = get_test_words("../data/word-sim")
     word_vectors_0.remove_all_except(words)
 
     unique_words = word_vectors_0.words
     vectors = word_vectors_0.dict
 
-    hyponyms_all = Hyponyms("data/hyponyms/25d_hyponyms_wordsim.json", unique_words)
-    word_vectors = DenseHyponymMatrices2(hyponyms=hyponyms_all, embedding_vectors=vectors)
+    hyponyms_all = Hyponyms("../data/hyponyms/25d_hyponyms_wordsim.json", unique_words)
+    word_vectors = DenseHyponymMatrices(hyponyms=hyponyms_all, embedding_vectors=vectors)
 
     word_vectors.flatten()
     word_vectors.to_csv(data_path)
@@ -347,9 +347,9 @@ def testing2(data_path: str):
     word_vectors_0.load_memory()
     word_vectors_0.remove_all_except(list(set([word.lower() for word in data_loader.unique_words])))
 
-    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
+    hyponyms = Hyponyms("../data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
 
-    word_vectors = DenseHyponymMatrices2(hyponyms, word_vectors_0.dict)
+    word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
 
     k_e = snli_pos_stats(data_loader, word_vectors, 1)
     print(k_e)
@@ -374,7 +374,7 @@ def main():
     # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
     # area_under_roc_curve("data/compositional_analysis/train/k_e/pos_tree2.csv")
     # scatter("data/compositional_analysis/train/k_e/pos_tree2.csv")
-    testing("data/word_sims_vectors/25_glove_hypo_wordsim.csv")
+    testing("../data/word_sims_vectors/25_glove_hypo_wordsim.csv")
     pass
     # area_under_roc_curve("data/compositional_analysis/KS2016/svo/True/k_e/pos_tree2.csv")
     # scatter("data/compositional_analysis/KS2016/svo/True/k_e/pos_tree2.csv")

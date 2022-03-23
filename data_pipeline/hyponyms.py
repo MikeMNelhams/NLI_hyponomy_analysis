@@ -52,7 +52,7 @@ class Hyponyms(file_op.DictWriter):
         return hyponyms
 
 
-class DenseHyponymMatrices2:
+class DenseHyponymMatrices:
     def __init__(self, hyponyms: Hyponyms,
                  embedding_vectors: Dict[str, np.array],
                  normalisation=False):
@@ -77,7 +77,7 @@ class DenseHyponymMatrices2:
         return str(self.density_matrices.keys())
 
     @classmethod
-    def from_file(cls, file_path: str) -> DenseHyponymMatrices2:
+    def from_file(cls, file_path: str) -> DenseHyponymMatrices:
         obj = cls.__new__(cls)
         file_writer = file_op.DictWriter(file_path)
 

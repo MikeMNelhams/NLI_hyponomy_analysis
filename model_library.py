@@ -73,7 +73,7 @@ class Checkpoint:
             raise FileNotFoundError
         state = torch.load(file_path)
         checkpoint = cls.__new__(cls)
-        if "state_dict" not in state or "optimizer" not in state:
+        if not isinstance(state, dict) or "state_dict" not in state or "optimizer" not in state:
             checkpoint.state_dict = state
             checkpoint.optimizer = None
             return checkpoint

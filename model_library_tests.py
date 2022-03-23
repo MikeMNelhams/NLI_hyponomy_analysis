@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed, SNLI_DataLoader_Unclean
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
-from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices2, Hyponyms
+from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, Hyponyms
 import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 
 import model_library as ml
