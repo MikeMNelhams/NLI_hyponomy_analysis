@@ -10,8 +10,8 @@ import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch
 from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, Hyponyms
-from NLI_hyponomy_analysis.data_pipeline.word_operations import find_all_pos_tags
-from parse_tree import ParseTree
+from NLI_hyponomy_analysis.comp_analysis_library.parse_tree import ParseTree
+from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy, verbs_mmult2
 
 from sklearn.metrics import roc_curve, roc_auc_score
 
@@ -31,7 +31,7 @@ def get_test_words(word_sim_dir_path: str) -> List[str]:
     return words
 
 
-def scatter(data_path: str):
+def scatter(data_path: str, threshold=0.5):
     data_loader = file_op.CSV_Writer(data_path, delimiter=',')
 
     data = data_loader.load_as_dataframe()
@@ -75,7 +75,7 @@ def scatter(data_path: str):
     plt.show()
 
 
-def area_under_roc_curve(data_path: str) -> float:
+def area_under_roc_curve(data_path: str, policy_name) -> float:
     predictions_loader = file_op.CSV_Writer(data_path, header="$auto", delimiter=',')
     __all_predictions = predictions_loader.load_all()
 
@@ -88,7 +88,7 @@ def area_under_roc_curve(data_path: str) -> float:
 
     fpr, tpr, thresholds = roc_curve(class_labels, predictions)
     auc = roc_auc_score(class_labels, predictions)
-
+    print("OPTIMAL THRESHOLD:", thresholds[np.argmax(tpr - fpr)])
     auc_message = f"Area under curve: {round(auc, 8)}"
 
     fig_save_path = file_op.file_path_without_extension(data_path) + ".png"
@@ -96,32 +96,13 @@ def area_under_roc_curve(data_path: str) -> float:
 
     dataset = file_op.root_dir(fig_save_path_info)
     secondary_info = file_op.root_dir(file_op.child_path(fig_save_path_info, 1))
-    plt.title(f"ROC curve for {dataset}, {secondary_info.upper()}")
+    plt.title(f"ROC curve for {dataset}, {secondary_info.upper()}, {policy_name.upper()}")
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
     plt.plot(fpr, tpr, linestyle='--', label=auc_message)
     plt.legend()
     plt.savefig(fig_save_path)
     plt.show()
-
-
-def calc_ke_multiply(batch_size, data_loader, word_vectors):
-    batch = data_loader.load_sequential(batch_size).to_model_data(["sentence1_parse", "sentence2_parse", "gold_label"])
-
-    batch_1 = [find_all_pos_tags(sentence[0]) for sentence in batch]
-    batch_1 = [[pair.lower().split(' ') for pair in sentence] for sentence in batch_1]
-
-    batch_2 = [find_all_pos_tags(sentence[1]) for sentence in batch]
-    batch_2 = [[pair.lower().split(' ') for pair in sentence] for sentence in batch_2]
-
-    vectors_batch1 = efficient_vectors_from_batch(batch_1, word_vectors)
-    vectors_batch2 = efficient_vectors_from_batch(batch_2, word_vectors)
-
-    labels = [sentence[2] for sentence in batch]
-
-    k_e = [[str(hl.k_e(vectors1, vectors2)), label]
-           for vectors1, vectors2, label in zip(vectors_batch1, vectors_batch2, labels)]
-    return k_e
 
 
 def k_e_from_batches(sentence1_vectors, sentence2_vectors):
@@ -197,28 +178,6 @@ def snli_pos_stats(data_loader, word_vectors, batch_size: int=256):
     return k_e, k_a
 
 
-def ks2016_pos_stats(data_loader, word_vectors, batch_size: int=256, tags=None):
-    batch = data_loader.load_sequential(batch_size)
-
-    batch_1 = [sentence[0] for sentence in batch]
-    batch_1 = [ParseTree.from_sentence(sentence, word_vectors, tags=tags) for sentence in batch_1]
-
-    for parse_tree in batch_1:
-        parse_tree.evaluate()
-
-    batch_2 = [sentence[1] for sentence in batch]
-    batch_2 = [ParseTree.from_sentence(sentence, word_vectors, tags=tags) for sentence in batch_2]
-    for parse_tree in batch_2:
-        parse_tree.evaluate()
-
-    labels = [sentence[2] for sentence in batch]
-
-    k_e = [[k_e_from_two_vectors(tree1.data[0], tree2.data[0]), label]
-           for tree1, tree2, label in zip(batch_1, batch_2, labels)]
-    k_e = [[str(line[0]), line[1]] for line in k_e if line[0] is not None]
-    return k_e
-
-
 def test_snli(data_path: str, batch_size: int=256):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
     data_loader = SNLI_DataLoader_Unclean(data_path)
@@ -227,16 +186,16 @@ def test_snli(data_path: str, batch_size: int=256):
     word_vectors_0.load_memory()
     word_vectors_0.remove_all_except(data_loader.unique_words)
 
-    hyponyms = Hyponyms("../data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
+    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
 
     word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
 
-    data_file_path_k_e = "../data/compositional_analysis/train/k_e/pos_tree2.csv"
+    data_file_path_k_e = "data/compositional_analysis/train/k_e/pos_tree2.csv"
 
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"),
                                          delimiter=',')
 
-    data_file_path_k_a = "../data/compositional_analysis/train/k_a/pos_tree2.csv"
+    data_file_path_k_a = "data/compositional_analysis/train/k_a/pos_tree2.csv"
 
     data_writer_k_a = file_op.CSV_Writer(data_file_path_k_a, header=("k_a", "label"),
                                          delimiter=',')
@@ -260,14 +219,39 @@ def test_snli(data_path: str, batch_size: int=256):
         data_writer_k_a.append_lines(k_a)
 
 
-def test_ks2016(data_path: str, tags_enabled=True):
+def ks_stats(data_loader, word_vectors, policy, tags, batch_size: int=256):
+    batch = data_loader.load_sequential(batch_size)
+
+    batch_1 = [sentence[0] for sentence in batch]
+    batch_1 = [ParseTree.from_sentence(sentence, word_vectors, policy, tags=tags) for sentence in batch_1]
+    for parse_tree in batch_1:
+        parse_tree.evaluate()
+
+    batch_2 = [sentence[1] for sentence in batch]
+    batch_2 = [ParseTree.from_sentence(sentence, word_vectors, policy, tags=tags) for sentence in batch_2]
+    for parse_tree in batch_2:
+        parse_tree.evaluate()
+
+    labels = [sentence[2] for sentence in batch]
+
+    k_e = [[k_e_from_two_vectors(tree1.data[0], tree2.data[0]), label]
+           for tree1, tree2, label in zip(batch_1, batch_2, labels)]
+    k_e = [[str(line[0]), line[1]] for line in k_e if line[0] is not None]
+
+    k_a = [[k_a_from_two_vectors(tree1.data[0], tree2.data[0]), label]
+           for tree1, tree2, label in zip(batch_1, batch_2, labels)]
+    k_a = [[str(line[0]), line[1]] for line in k_a if line[0] is not None]
+
+    return k_e, k_a
+
+
+def test_ks(data_path: str, policy: Policy, policy_name: str, batch_size=256):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
 
     ks_type = re.findall(r'[^\-]*$', file_op.file_path_without_extension(data_path))[0].lower()
     ks_type_to_tags = {"sv": ('n', 'v'), "vo": ('v', 'n'), "svo": ('n', 'v', 'n')}
-    tags = None
-    if tags_enabled and ks_type_to_tags is not None:
-        tags = ks_type_to_tags[ks_type]
+
+    tags = ks_type_to_tags[ks_type]
 
     data_loader = file_op.CSV_Writer(data_path, delimiter=',')
 
@@ -278,23 +262,21 @@ def test_ks2016(data_path: str, tags_enabled=True):
     word_vectors_0.load_memory()
     word_vectors_0.remove_all_except(sentences0.unique_words)
 
-    hyponyms = Hyponyms("../data/hyponyms/25d_hyponyms_all.json", sentences0.unique_words)
+    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", sentences0.unique_words)
 
     word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
 
-    data_file_path_k_e = f"data/compositional_analysis/KS2016/{ks_type}/{tags_enabled}/k_e/pos_tree2.csv"
+    data_file_path_k_e = f"data/compositional_analysis/KS2016/{ks_type}/{policy_name}/k_e.csv"
 
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e,
                                          header=("k_e", "label"),
                                          delimiter=',')
 
-    data_file_path_k_a = f"data/compositional_analysis/KS2016/{ks_type}/{tags_enabled}/k_a/pos_tree2.csv"
+    data_file_path_k_a = f"data/compositional_analysis/KS2016/{ks_type}/{policy_name}/k_a.csv"
 
     data_writer_k_a = file_op.CSV_Writer(data_file_path_k_a,
                                          header=("k_e", "label"),
                                          delimiter=',')
-
-    batch_size = 256
 
     if data_writer_k_e.file_exists or data_writer_k_a.file_exists:
         user_response = input("Do you want to continue, file already exists! ")
@@ -315,7 +297,7 @@ def test_ks2016(data_path: str, tags_enabled=True):
     batch_sizes = [batch_size for _ in range(num_iters)] + [last_batch_size]
 
     for batch_size in batch_sizes:
-        k_e, k_a = ks2016_pos_stats(data_loader, word_vectors, batch_size, tags=tags)
+        k_e, k_a = ks_stats(data_loader, word_vectors, policy, tags, batch_size=batch_size)
         data_writer_k_e.append_lines(k_e)
         data_writer_k_a.append_lines(k_e)
 
@@ -326,13 +308,13 @@ def testing(data_path: str):
     word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
     word_vectors_0.load_memory()
 
-    words = get_test_words("../data/word-sim")
+    words = get_test_words("data/word-sim")
     word_vectors_0.remove_all_except(words)
 
     unique_words = word_vectors_0.words
     vectors = word_vectors_0.dict
 
-    hyponyms_all = Hyponyms("../data/hyponyms/25d_hyponyms_wordsim.json", unique_words)
+    hyponyms_all = Hyponyms("data/hyponyms/25d_hyponyms_wordsim.json", unique_words)
     word_vectors = DenseHyponymMatrices(hyponyms=hyponyms_all, embedding_vectors=vectors)
 
     word_vectors.flatten()
@@ -347,7 +329,7 @@ def testing2(data_path: str):
     word_vectors_0.load_memory()
     word_vectors_0.remove_all_except(list(set([word.lower() for word in data_loader.unique_words])))
 
-    hyponyms = Hyponyms("../data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
+    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
 
     word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
 
@@ -355,31 +337,33 @@ def testing2(data_path: str):
     print(k_e)
 
 
-def ks_test(subset, tags_enabled=False):
-    test_ks2016(f"data/KS2016/KS2016-{subset.upper()}.csv", tags_enabled=tags_enabled)
-    area_under_roc_curve(f"data/compositional_analysis/KS2016/{subset}/{tags_enabled}/k_e/pos_tree2.csv")
-    scatter(f"data/compositional_analysis/KS2016/{subset}/{tags_enabled}/k_e/pos_tree2.csv")
+def ks_test(subset, policy: Policy, policy_name: str):
+    test_ks(f"data/KS2016/KS2016-{subset.upper()}.csv", policy, policy_name)
+    area_under_roc_curve(f"data/compositional_analysis/KS2016/{subset}/{policy_name}/k_e.csv", policy_name)
+    scatter(f"data/compositional_analysis/KS2016/{subset}/{policy_name}/k_e.csv")
 
 
-def ks_test_all():
+def ks_test_policy(policy: Policy, policy_name: str):
     subsets = ("sv", "vo", "svo")
-    tag_modes = (True, False)
 
     for subset in subsets:
-        for tag_mode in tag_modes:
-            ks_test(subset, tag_mode)
+        ks_test(subset, policy, policy_name)
 
 
 def main():
     # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
-    # area_under_roc_curve("data/compositional_analysis/train/k_e/pos_tree2.csv")
-    # scatter("data/compositional_analysis/train/k_e/pos_tree2.csv")
-    testing("../data/word_sims_vectors/25_glove_hypo_wordsim.csv")
-    pass
-    # area_under_roc_curve("data/compositional_analysis/KS2016/svo/True/k_e/pos_tree2.csv")
-    # scatter("data/compositional_analysis/KS2016/svo/True/k_e/pos_tree2.csv")
+    # area_under_roc_curve("data/comp_analysis_library/train/k_e/pos_tree2.csv")
+    # scatter("data/comp_analysis_library/train/k_e/pos_tree2.csv")
+    # testing("../data/word_sims_vectors/25_glove_hypo_wordsim.csv")
+
+    # area_under_roc_curve("data/comp_analysis_library/KS2016/svo/True/k_e/pos_tree2.csv")
+    # scatter("data/comp_analysis_library/KS2016/svo/True/k_e/pos_tree2.csv")
     # testing2("data/snli_1.0/snli_1.0_train.jsonl")
-    # ks_test_all()
+    # policy = only_mult()
+
+    policy = verbs_mmult2()
+
+    ks_test_policy(policy, policy_name="verbs_mmult2")
 
 
 if __name__ == "__main__":

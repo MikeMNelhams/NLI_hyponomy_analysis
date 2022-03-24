@@ -1,12 +1,24 @@
 from nltk import Tree
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
 
-import conditions as cond
+import NLI_hyponomy_analysis.comp_analysis_library.conditions as cond
 from typing import Callable, Iterable, Tuple
 
 
+def mult(tree1: Tree, tree2: Tree) -> Tree:
+    return Tree(None, [hl.mult(tree1[0], tree2[0])])
+
+
+def mmult1(tree1: Tree, tree2: Tree) -> Tree:
+    return Tree(None, [hl.mmult1(tree1[0], tree2[0])])
+
+
+def mmult2(tree1: Tree, tree2: Tree) -> Tree:
+    return Tree(None, [hl.mmult2(tree1[0], tree2[0])])
+
+
 def pairwise_product_with_ignored_labels(tree1: Tree, tree2: Tree,
-                                         bivariate_operator: Callable[[Tree, Tree], Tree]=hl.mult,
+                                         bivariate_operator: Callable[[Tree, Tree], Tree]=mult,
                                          ignore_labels: Iterable[str]=('ls', 'pos', '.', 'dt', ',')) -> Tree:
     if cond.is_ignored(tree1, ignore_labels):
         if cond.is_ignored(tree2, ignore_labels):
@@ -24,27 +36,37 @@ def l2r_pairwise(*trees: Tuple[Tree],
     if len(trees) > 1:
         for tree in trees[1:]:
             if tree[0] is None:
-                if product is None:
+                if product[0] is None:
                     product = Tree(None, [None])
-            if product is None:
+                    continue
+                continue
+            if product[0] is None:
                 product = tree
+                continue
+
             product = bivariate_operator(tree, product)
     return product
 
 
 def r2l_pairwise(*trees: Tuple[Tree],
                  bivariate_operator: Callable[[Tree, Tree], Tree]=pairwise_product_with_ignored_labels) -> Tree:
+
+    if len(trees) == 1:
+        return trees[0]
+
     product = trees[-1]
 
-    if len(trees) > 1:
-        for tree in reversed(trees[:-1]):
-            if tree[0] is None:
-                if product is None:
-                    product = Tree(None, [None])
-            if product is None:
-                product = tree
-            product = bivariate_operator(tree, product)
+    for tree in reversed(trees[:-1]):
+        if tree[0] is None:
+            if product[0] is None:
+                product = Tree(None, [None])
+                continue
+            continue
+        if product[0] is None:
+            product = tree
+            continue
 
+        product = bivariate_operator(tree, product)
     return product
 
 
@@ -54,7 +76,3 @@ def right_only(tree1: Tree, tree2: Tree) -> Tree:
 
 def left_only(tree1: Tree, tree2: Tree) -> Tree:
     return tree1
-
-
-def mult(tree1: Tree, tree2: Tree) -> Tree:
-    return Tree(None, hl.mult(tree1[0], tree2))

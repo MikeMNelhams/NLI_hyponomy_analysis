@@ -501,7 +501,7 @@ class CSV_Writer:
     @load_print_decorator
     def load_all(self, safe=True, as_float=False) -> list:
         if safe and not self.file_exists:
-            raise FileExistsError
+            raise FileNotFoundError
 
         return self.__load_as_list(as_float=as_float)
 

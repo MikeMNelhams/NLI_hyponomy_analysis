@@ -395,7 +395,12 @@ def calculate_roc_bootstraps(phrase_pairs, combined_phrases, phrase_type, roc_di
 
 
 def mult(a: np.array, b: np.array) -> np.array:
-    result = matrix.hadamard_product(a, b)
+    try:
+        result = matrix.hadamard_product(a, b)
+    except Exception as e:
+        print(a.shape)
+        print(b.shape)
+        raise e
     return result
 
 
