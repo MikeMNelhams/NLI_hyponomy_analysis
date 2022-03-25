@@ -11,11 +11,12 @@ from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch
 from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, Hyponyms
 from NLI_hyponomy_analysis.comp_analysis_library.parse_tree import ParseTree
-from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy, verbs_mmult2
+from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy, verbs_switch, only_mult
 
 from sklearn.metrics import roc_curve, roc_auc_score
 
 import os
+import sys
 
 
 label_mapping = {"t": 1, "entailment": 1, "neutral": 0.5, "f": 0, "contradiction": 0, '-': 0.5}
@@ -152,17 +153,29 @@ def hadamard_list_of_vectors(vectors):
     return out
 
 
-def snli_pos_stats(data_loader, word_vectors, batch_size: int=256):
+def snli_stats(data_loader, word_vectors, policy, batch_size: int=256):
     batch = data_loader.load_sequential(batch_size).to_model_data(["sentence1_parse", "sentence2_parse", "gold_label"])
+    k_e, k_a = __batch_stats(batch, word_vectors, policy, constructor=ParseTree)
+    return k_e, k_a
 
+
+def ks_stats(data_loader, word_vectors, policy, tags, batch_size: int=256):
+    batch = data_loader.load_sequential(batch_size)
+
+    def constructor(*args):
+        return ParseTree.from_sentence(*args, tags=tags)
+    k_e, k_a = __batch_stats(batch, word_vectors, policy, tags, constructor=constructor)
+    return k_e, k_a
+
+
+def __batch_stats(batch, word_vectors, policy: Policy, constructor=ParseTree):
     batch_1 = [sentence[0] for sentence in batch]
-    batch_1 = [ParseTree(sentence.lower(), word_vectors) for sentence in batch_1]
-
+    batch_1 = [constructor(sentence, word_vectors, policy) for sentence in batch_1]
     for parse_tree in batch_1:
         parse_tree.evaluate()
 
     batch_2 = [sentence[1] for sentence in batch]
-    batch_2 = [ParseTree(sentence.lower(), word_vectors) for sentence in batch_2]
+    batch_2 = [constructor(sentence, word_vectors, policy) for sentence in batch_2]
     for parse_tree in batch_2:
         parse_tree.evaluate()
 
@@ -172,13 +185,13 @@ def snli_pos_stats(data_loader, word_vectors, batch_size: int=256):
            for tree1, tree2, label in zip(batch_1, batch_2, labels)]
     k_e = [[str(line[0]), line[1]] for line in k_e if line[0] is not None]
 
-    k_a = [[k_a_from_two_vectors(tree1.data[0], tree2.data[0]), label] for tree1, tree2, label in zip(batch_1, batch_2, labels)]
+    k_a = [[k_a_from_two_vectors(tree1.data[0], tree2.data[0]), label]
+           for tree1, tree2, label in zip(batch_1, batch_2, labels)]
     k_a = [[str(line[0]), line[1]] for line in k_a if line[0] is not None]
-
     return k_e, k_a
 
 
-def test_snli(data_path: str, batch_size: int=256):
+def snli_test_policy(data_path: str, policy: Policy, policy_name, batch_size: int=256):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
     data_loader = SNLI_DataLoader_Unclean(data_path)
 
@@ -190,12 +203,12 @@ def test_snli(data_path: str, batch_size: int=256):
 
     word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
 
-    data_file_path_k_e = "data/compositional_analysis/train/k_e/pos_tree2.csv"
+    data_file_path_k_e = f"data/compositional_analysis/train/k_e/{policy_name}"
 
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"),
                                          delimiter=',')
 
-    data_file_path_k_a = "data/compositional_analysis/train/k_a/pos_tree2.csv"
+    data_file_path_k_a = f"data/compositional_analysis/train/k_a/{policy_name}"
 
     data_writer_k_a = file_op.CSV_Writer(data_file_path_k_a, header=("k_a", "label"),
                                          delimiter=',')
@@ -214,35 +227,9 @@ def test_snli(data_path: str, batch_size: int=256):
     batch_sizes = [batch_size for _ in range(num_iters)] + [last_batch_size]
 
     for batch_size in batch_sizes:
-        k_e, k_a = snli_pos_stats(data_loader, word_vectors, batch_size)
+        k_e, k_a = snli_test_policy(data_loader, word_vectors, policy, batch_size)
         data_writer_k_e.append_lines(k_e)
         data_writer_k_a.append_lines(k_a)
-
-
-def ks_stats(data_loader, word_vectors, policy, tags, batch_size: int=256):
-    batch = data_loader.load_sequential(batch_size)
-
-    batch_1 = [sentence[0] for sentence in batch]
-    batch_1 = [ParseTree.from_sentence(sentence, word_vectors, policy, tags=tags) for sentence in batch_1]
-    for parse_tree in batch_1:
-        parse_tree.evaluate()
-
-    batch_2 = [sentence[1] for sentence in batch]
-    batch_2 = [ParseTree.from_sentence(sentence, word_vectors, policy, tags=tags) for sentence in batch_2]
-    for parse_tree in batch_2:
-        parse_tree.evaluate()
-
-    labels = [sentence[2] for sentence in batch]
-
-    k_e = [[k_e_from_two_vectors(tree1.data[0], tree2.data[0]), label]
-           for tree1, tree2, label in zip(batch_1, batch_2, labels)]
-    k_e = [[str(line[0]), line[1]] for line in k_e if line[0] is not None]
-
-    k_a = [[k_a_from_two_vectors(tree1.data[0], tree2.data[0]), label]
-           for tree1, tree2, label in zip(batch_1, batch_2, labels)]
-    k_a = [[str(line[0]), line[1]] for line in k_a if line[0] is not None]
-
-    return k_e, k_a
 
 
 def test_ks(data_path: str, policy: Policy, policy_name: str, batch_size=256):
@@ -302,7 +289,7 @@ def test_ks(data_path: str, policy: Policy, policy_name: str, batch_size=256):
         data_writer_k_a.append_lines(k_e)
 
 
-def testing(data_path: str):
+def testing(data_path: str, depth: int=10):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
 
     word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
@@ -314,7 +301,7 @@ def testing(data_path: str):
     unique_words = word_vectors_0.words
     vectors = word_vectors_0.dict
 
-    hyponyms_all = Hyponyms("data/hyponyms/25d_hyponyms_wordsim.json", unique_words)
+    hyponyms_all = Hyponyms(f"data/hyponyms/depth_25/hyps_depth_{depth}.json", unique_words, depth=depth)
     word_vectors = DenseHyponymMatrices(hyponyms=hyponyms_all, embedding_vectors=vectors)
 
     word_vectors.flatten()
@@ -332,12 +319,16 @@ def testing2(data_path: str):
     hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
 
     word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
+    word_vectors.flatten()
 
-    k_e = snli_pos_stats(data_loader, word_vectors, 1)
-    print(k_e)
+    print(sys.getsizeof(data_loader.load_sequential(5).to_model_data().to_tensors(word_vectors)))
+
+    #
+    # k_e = snli_test_policy(data_loader, word_vectors, 1)
+    # print(k_e)
 
 
-def ks_test(subset, policy: Policy, policy_name: str):
+def ks_test_subset(subset, policy: Policy, policy_name: str):
     test_ks(f"data/KS2016/KS2016-{subset.upper()}.csv", policy, policy_name)
     area_under_roc_curve(f"data/compositional_analysis/KS2016/{subset}/{policy_name}/k_e.csv", policy_name)
     scatter(f"data/compositional_analysis/KS2016/{subset}/{policy_name}/k_e.csv")
@@ -347,23 +338,22 @@ def ks_test_policy(policy: Policy, policy_name: str):
     subsets = ("sv", "vo", "svo")
 
     for subset in subsets:
-        ks_test(subset, policy, policy_name)
+        ks_test_subset(subset, policy, policy_name)
 
 
 def main():
-    # test_snli("data/snli_1.0/snli_1.0_train.jsonl")
-    # area_under_roc_curve("data/comp_analysis_library/train/k_e/pos_tree2.csv")
-    # scatter("data/comp_analysis_library/train/k_e/pos_tree2.csv")
-    # testing("../data/word_sims_vectors/25_glove_hypo_wordsim.csv")
-
-    # area_under_roc_curve("data/comp_analysis_library/KS2016/svo/True/k_e/pos_tree2.csv")
-    # scatter("data/comp_analysis_library/KS2016/svo/True/k_e/pos_tree2.csv")
     # testing2("data/snli_1.0/snli_1.0_train.jsonl")
+
+    depths = [1, 2, 4, 6, 8, 10, 12, 15, 20]
+
+    for depth in depths:
+        testing(f"data/word_sims_vectors/how_depth_affects_glove_25/depth_{depth}.csv", depth=depth)
+
     # policy = only_mult()
-
-    policy = verbs_mmult2()
-
-    ks_test_policy(policy, policy_name="verbs_mmult2")
+    # snli_test_policy()
+    # policy = verbs_switch()
+    #
+    # ks_test_policy(policy, policy_name="verbs_switch")
 
 
 if __name__ == "__main__":

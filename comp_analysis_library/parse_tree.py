@@ -85,7 +85,15 @@ class ParseTree:
 
 def main():
     pass
+    # p = ParseTree.pos_string_to_binary_tree("(Root p{she,lifted}•heavy•weights)")
+    # p.draw()
+    # p = ParseTree.pos_string_to_binary_tree("(Root (S (PP I) (VBD ran) (RB very • quickly)))")
+    # p.draw()
+    # p = ParseTree.pos_string_to_binary_tree("(Root (S I • ran) (RB very • quickly))")
+    # p.draw()
+    # p = ParseTree.pos_string_to_binary_tree("(Root I • ran • RB very • quickly)")
+    # p.draw()
 
 
 if __name__ == "__main__":
-    pass
+    main()

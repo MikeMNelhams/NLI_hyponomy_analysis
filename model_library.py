@@ -68,10 +68,10 @@ class Checkpoint:
         return model, optimizer
 
     @classmethod
-    def load_checkpoint(cls, file_path: str) -> Checkpoint:
+    def load_checkpoint(cls, file_path: str, device: torch.device=torch.device("cpu")) -> Checkpoint:
         if not file_op.is_file(file_path):
             raise FileNotFoundError
-        state = torch.load(file_path)
+        state = torch.load(file_path, map_location=device)
         checkpoint = cls.__new__(cls)
         if not isinstance(state, dict) or "state_dict" not in state or "optimizer" not in state:
             checkpoint.state_dict = state
@@ -767,7 +767,7 @@ class AbstractClassifierModel(ABC):
         if not self.is_file:
             raise FileNotFoundError
 
-        final_checkpoint = Checkpoint.load_checkpoint(self.model_save_path)
+        final_checkpoint = Checkpoint.load_checkpoint(self.model_save_path, device=self.hyper_parameters.device)
         final_checkpoint.apply(self.model, self.optimizer)
 
         self.model.eval()

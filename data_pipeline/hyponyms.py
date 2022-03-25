@@ -10,11 +10,11 @@ import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 
 
 class Hyponyms(file_op.DictWriter):
-    def __init__(self, hyponyms_file_path: str, unique_words: list):
+    def __init__(self, hyponyms_file_path: str, unique_words: list, depth: int=10):
         super(Hyponyms, self).__init__(hyponyms_file_path)
 
         if not self.file_exists or self.file_empty:
-            self.hyponyms = self.hyponyms_from_words(unique_words)
+            self.hyponyms = self.hyponyms_from_words(unique_words, depth=depth)
 
             self.save(self.hyponyms)
         else:

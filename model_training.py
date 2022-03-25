@@ -32,10 +32,10 @@ def main():
     word_vectors.flatten()
 
     params = HyperParams(heads=5, learning_rate=0.3, dropout=0.5, optimizer=optim.Adadelta,
-                         patience=6, early_stopping_mode="minimum", device='cpu', num_layers=6)
+                         patience=6, early_stopping_mode="minimum", device='cpu', num_layers=3)
 
     mike_net = StaticEntailmentNet(word_vectors, train_loader,
-                                   file_path='data/models/lstm/hyponym_full_model_large.pth',
+                                   file_path='data/models/lstm/hyponym_full_model_large2.pth',
                                    hyper_parameters=params, classifier_model=LSTM,
                                    validation_data_loader=validation_loader)
     mike_net.count_parameters()

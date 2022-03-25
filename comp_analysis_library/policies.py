@@ -85,7 +85,13 @@ def verbs_mmult2() -> Policy:
     rule4 = Rule(condition=cond.is_noun_verb, function=op.mmult2)
     return Policy([rule1, rule2, rule3, rule4], default_rule)
 
-#
-# def verbs_mmult1() -> Policy:
-#     default_rule = DefaultRule.default_r2l(v)
+
+def verbs_switch() -> Policy:
+    default_rule = DefaultRule.default_r2l(bivariate_operator=op.mmult2)
+    rule1 = Rule.right_only_if()
+    rule2 = Rule(condition=cond.is_verb_noun, function=op.mmult1)
+    rule3 = Rule(condition=cond.is_adj_noun, function=op.mmult1)
+    rule4 = Rule(condition=cond.is_noun_verb, function=op.mmult1)
+    return Policy([rule1, rule2, rule3, rule4], default_rule)
+
 
