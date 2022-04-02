@@ -3,15 +3,13 @@ from __future__ import annotations
 import json
 import os.path
 import random
-from collections import Counter
-from collections import OrderedDict
-from itertools import chain
-from typing import Any
-from typing import Iterable
-from typing import List
+from collections import Counter, OrderedDict
+from itertools import chain, islice
+from typing import Any, Iterable, List
 
 from abc import ABC, abstractmethod
 
+import math
 import numpy as np
 import torch
 from embeddings import GloveEmbedding
@@ -526,27 +524,25 @@ class NLI_DataLoader_abc(ABC):
 
         return DictBatch(content, max_sequence_len=self.max_words_in_sentence_length)
 
-    def load_random(self, batch_size: int = 256) -> DictBatch:
-        """ O(File_size) load_as_dataframe random lines"""
-        # Uses reservoir sampling.
-        # There is actually a FASTER way to do this using more complicated sampling:
-        #   https://dl.acm.org/doi/pdf/10.1145/355900.355907
-        # You could try to switch the code below into a single enumeration rather than using appends for ~2x speed-up,
-        #   However, I can't get my head around how to do that....
+    def load_random(self, batch_size: int = 256, default=-1) -> DictBatch:
+        """ O(File_size) load_as_dataframe random lines
+            Highly optimised using reservoir sampling L-algorithm (Optimal)
+            https://en.wikipedia.org/wiki/Reservoir_sampling
+        """
 
-        buffer = []
+        with open(self.file_load_path, "r") as iterable:
+            reservoir = list(map(self._parse_file_line, islice(iterable, batch_size)))
 
-        with open(self.file_path, 'r') as f:
-            for line_num, line in enumerate(f):
-                n = line_num + 1.0
-                r = random.random()
-                if n <= batch_size:
-                    buffer.append(self._parse_file_line(line))
-                elif r < batch_size / n:
-                    loc = random.randint(0, batch_size - 1)
-                    buffer[loc] = self._parse_file_line(line)
+            w = math.exp(math.log(random.random()) / batch_size)
 
-        return DictBatch(buffer, max_sequence_len=self.max_words_in_sentence_length)
+            while True:
+                s = math.floor(math.log(random.random()) / math.log(1 - w))
+                next_elem = next(islice(iterable, s + 1, None), default)
+                if next_elem == default:
+                    return DictBatch(reservoir, max_sequence_len=self.max_words_in_sentence_length)
+
+                reservoir[random.randrange(0, batch_size)] = self._parse_file_line(next_elem)
+                w *= math.exp(math.log(random.random()) / batch_size)
 
     def load_sequential(self, batch_size: int = 256, from_start: bool = False) -> DictBatch:
         if from_start:

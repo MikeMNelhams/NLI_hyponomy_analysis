@@ -194,12 +194,11 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
             running_accuracy = running_accuracy / number_of_iterations_per_epoch
             running_loss = running_loss / number_of_iterations_per_epoch
-            scores = None
 
             epoch_end_time = time.perf_counter()
             self.info.add_runtime(epoch_end_time - epoch_start_time)
 
-            self.history.step(float(running_loss), running_accuracy, scores)
+            self.history.step(float(running_loss), running_accuracy)
 
             validation_loss = None
             if self.model_is_validating:
@@ -242,7 +241,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
         outputs = self.model(inputs, masks)
         predictions = self._minibatch_predictions(outputs)
 
-        loss = criterion(outputs, labels)
+        loss = criterion(outputs, labels) + self.regularisation(self.model)
         loss.backward()
         self.optimizer.step()
         accuracy = self.accuracy(predictions, labels)

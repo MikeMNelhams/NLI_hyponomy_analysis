@@ -229,16 +229,47 @@ class EarlyStoppingTraining:
         return None
 
 
+class Regularisation:
+    def __init__(self, l1=0, l2=0):
+        self.l1 = l1
+        self.l2 = l2
+
+    def __call__(self, model):
+        return self.loss(model)
+
+    def loss(self, model) -> float:
+        total_l_loss = 0
+        if self.l1 > 0:
+            total_l_loss += self.__l_norm_loss(1, self.l1, model)
+        if self.l2 > 0:
+            total_l_loss += self.__l_norm_loss(2, self.l2, model)
+
+        return total_l_loss
+
+    @staticmethod
+    def __l_norm_loss(l_norm, l_coefficient, model) -> float:
+        def normative_func(x):
+            return torch.pow(x, exponent=l_norm)
+
+        norm_func = normative_func
+
+        if l_norm == 1:
+            norm_func = torch.abs
+
+        norm = sum(norm_func(p).sum() for p in model.parameters() if p.requires_grad)
+        l_loss = l_coefficient * norm
+
+        return l_loss
+
+
 class HyperParams:
     def __init__(self, num_layers: int = 6, forward_expansion: int = 4, heads: int = 5, dropout: float = 0,
-                 device="cuda", learning_rate: float = 0.1, optimizer=optim.Adadelta,
-                 l2_regularisation=0, l1_regularisation=0,
+                 device="cuda", learning_rate: float = 0.1, optimizer=optim.Adadelta, regularisation=Regularisation(),
                  patience=5, early_stopping_mode="moving_average"):
         # General parameters
         self.dropout = dropout
         self.learning_rate = learning_rate
-        self.l1_regularisation = l1_regularisation
-        self.l2_regularisation = l2_regularisation
+        self.regularisation = regularisation
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
         # Transformer parameters
@@ -711,6 +742,7 @@ class AbstractClassifierModel(ABC):
             self.info["max_length"] = self.max_length
             self.info.save()  # This is important for init the model.
 
+        self.regularisation = hyper_parameters.regularisation
         self.model = None
         self.optimizer = hyper_parameters.optimizer
         self._construct_model(classifier_model=classifier_model)
@@ -727,8 +759,7 @@ class AbstractClassifierModel(ABC):
                                       max_seq_len=self.max_length,
                                       hyper_parameters=self.hyper_parameters,
                                       number_of_output_classes=self.num_classes).to(self.hyper_parameters.device)
-        self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate,
-                                        weight_decay=self.hyper_parameters.l2_regularisation)
+        self.optimizer = self.optimizer(self.model.parameters(), lr=self.hyper_parameters.learning_rate)
         if self.is_file:
             self.load()
 
