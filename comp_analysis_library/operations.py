@@ -1,8 +1,13 @@
 from nltk import Tree
+
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
 
 import NLI_hyponomy_analysis.comp_analysis_library.conditions as cond
 from typing import Callable, Iterable, Tuple
+
+
+def add(tree1: Tree, tree2: Tree) -> Tree:
+    return Tree(None, [tree1[0] + tree2[0]])
 
 
 def mult(tree1: Tree, tree2: Tree) -> Tree:

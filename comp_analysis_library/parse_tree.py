@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 from nltk import Tree
 from functools import reduce
 from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy
@@ -15,7 +17,7 @@ class ParseTree:
     def __init__(self, binary_parse_string, word_vectors, policy: Policy):
         self.data = self.pos_string_to_binary_tree(binary_parse_string)
         self.word_vectors = word_vectors
-        self.policy = policy
+        self.policy = copy.deepcopy(policy)
 
     def __repr__(self):
         return self.data.__repr__()
@@ -63,6 +65,11 @@ class ParseTree:
                 tree_list.append(self.__evaluate(child))
 
         for i, subtree in enumerate(tree_list):
+            if isinstance(subtree, str):
+                print("SUBTREE IS STRING?:", subtree)
+                print("Full tree list:", tree_list)
+                print("tree given:", tree)
+                raise ZeroDivisionError
             vector = subtree[0]
             if isinstance(vector, str):
                 vector = self.word_vectors.safe_lookup(vector)

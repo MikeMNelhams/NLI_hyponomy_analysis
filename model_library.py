@@ -248,15 +248,12 @@ class Regularisation:
 
     @staticmethod
     def __l_norm_loss(l_norm, l_coefficient, model) -> float:
-        def normative_func(x):
-            return torch.pow(x, exponent=l_norm)
-
-        norm_func = normative_func
 
         if l_norm == 1:
-            norm_func = torch.abs
+            norm = sum(p.abs().sum() for p in model.parameters())
+        else:
+            norm = sum(p.pow(float(l_norm)).sum() for p in model.parameters())
 
-        norm = sum(norm_func(p).sum() for p in model.parameters() if p.requires_grad)
         l_loss = l_coefficient * norm
 
         return l_loss

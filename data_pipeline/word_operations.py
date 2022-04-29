@@ -5,6 +5,16 @@ import re
 from nltk.stem import WordNetLemmatizer
 
 
+label_mapping = {"f": "contradiction", "t": "entailment", "-": "unknown",
+                 "contradiction": "contradiction", "entailment": "entailment", "neutral": "neutral"}
+
+bad_chars = ['\u00a0']
+
+
+def standardise_label(label: str) -> str:
+    return label_mapping[label]
+
+
 def replace_space_for_underscores(word: str) -> str:
     return word.replace(' ', '_')
 
@@ -17,9 +27,7 @@ def remove_punctuation(word: str, punctuation: iter = (',', '.', '\'', '\"', "*"
 
 
 def regex_clean_all_punctuation(word: str) -> str:
-
     returned_word = re.sub(r"[^A-Za-z]+", ' ', word)
-
     return returned_word
 
 
@@ -150,6 +158,10 @@ def remove_speech_marks(word: str) -> str:
     return word.replace('"', '')
 
 
+def remove_utf8_bad_chars(word: str) -> str:
+    return remove_punctuation(word, bad_chars)
+
+
 def count_max_sequence_length(list_of_sentences: List[str]):
     return max(len(row.split()) for row in list_of_sentences)
 
@@ -212,13 +224,16 @@ class ProcessingSynonyms:
 class WordParser:
     """ A way to combine multiple filters into a callable."""
     def __init__(self, actions: Iterable[callable]):
-        self.__actions = actions
+        self.__actions = list(actions)
 
     def __call__(self, word: str) -> str:
         word_copy = word
         for action in self.__actions:
             word_copy = action(word_copy)
         return word_copy
+
+    def append(self, action: callable):
+        self.__actions.append(action)
 
     @staticmethod
     def default_clean() -> "WordParser":
@@ -231,3 +246,7 @@ class WordParser:
     @staticmethod
     def default_lemmatisation_pos() -> "WordParser":
         return WordParser([lemmatise_sentence_pos])
+
+    @staticmethod
+    def default_remove_bar_chars() -> "WordParser":
+        return WordParser([remove_utf8_bad_chars])

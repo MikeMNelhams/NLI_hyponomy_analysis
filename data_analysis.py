@@ -1,6 +1,5 @@
 import os.path
 
-from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_POS_Processed
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SNLI_DataLoader_Processed
 from NLI_hyponomy_analysis.data_pipeline.file_operations import file_path_without_extension
 
@@ -42,9 +41,9 @@ class FrequencyFigureParams(FigureParams):
 
 
 class DataAnalysis:
-    def __init__(self, file_path: str):
-        assert os.path.isfile(file_path)
-        self.__data_loader = SNLI_DataLoader_POS_Processed(file_path)
+    def __init__(self, data_loader):
+        assert len(data_loader) > 0
+        self.__data_loader = data_loader
 
     @property
     def data_loader(self):

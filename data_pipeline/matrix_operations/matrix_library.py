@@ -61,9 +61,12 @@ def compose(list_of_matrices, func: callable, norm_type=None, **kwargs) -> np.ar
 def projection(a: np.array, b: np.array, tol=1e-8) -> np.array:
     """ a is outer, b is middle"""
     # verb_sqrt = matrix_sqrt(a)
-    verb_sqrt = sqrtm(a)
-    # assert_real_eigenvalues(verb_sqrt, tolerance=tol)
-    mat = verb_sqrt.dot(b).dot(verb_sqrt)
+    try:
+        verb_sqrt = sqrtm(a)
+    except ValueError as e:
+        print(a)
+        raise e
+    mat = np.matmul(np.matmul(verb_sqrt, b), verb_sqrt)
     return mat
 
 

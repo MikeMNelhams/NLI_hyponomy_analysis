@@ -545,6 +545,9 @@ class CSV_Writer:
         return None
 
     def __load(self) -> pd.DataFrame:
+        if self.header is None:
+            data = pd.read_csv(self.file_path, sep=self.delimiter, header=None)
+            return data
         data = pd.read_csv(self.file_path, sep=self.delimiter)
         return data
 

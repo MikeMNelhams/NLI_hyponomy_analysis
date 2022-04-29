@@ -16,13 +16,15 @@ class NeuralNetwork(nn.Module):
         super(NeuralNetwork, self).__init__()
         self.hyper_parameters = hyper_parameters
 
+        layer_width = 128
+
         # Input shape: batch_size, num_sentences, max_seq_len, embed_size
         # Data shape: num_sentences, max_seq_len, embed_size
         self.num_sentences, self.max_length, self.embed_size = data_shape
         self.encoder_flattened_size = self.num_sentences * max_seq_len * self.embed_size
 
-        self.fc1 = nn.Linear(self.encoder_flattened_size, 200, bias=True)
-        self.fc2 = nn.Linear(200, 50, bias=True)
+        self.fc1 = nn.Linear(self.encoder_flattened_size, layer_width, bias=True)
+        self.fc2 = nn.Linear(layer_width, 50, bias=True)
         self.fc_out = nn.Linear(50, number_of_output_classes, bias=False)
         self.relu = nn.ReLU()
 
@@ -49,7 +51,7 @@ class LSTM(nn.Module):
         # Data shape: num_sentences, max_seq_len, embed_size
         self.num_sentences, self.max_length, self.embed_size = data_shape
         self.encoder_flattened_size = self.num_sentences * self.embed_size
-        self.hidden_size = 128
+        self.hidden_size = 200
         self.lstm_hidden_size = self.hidden_size * self.max_length
         self.lstm = nn.LSTM(self.encoder_flattened_size, self.hidden_size, num_layers=hyper_parameters.num_layers,
                             batch_first=True,
@@ -62,12 +64,12 @@ class LSTM(nn.Module):
         # Input shape: (batch_size, num_sentences, embed_size, max_length)
         batch_size = x.shape[0]
 
-        x = x.reshape(batch_size, self.max_length, self.encoder_flattened_size)
-        x, _ = self.lstm(x)
+        y = x.reshape(batch_size, self.max_length, self.encoder_flattened_size)
+        y, _ = self.lstm(y)
 
-        x = x.reshape(batch_size, self.lstm_hidden_size)
-        x = self.fc_out(x)
-        return x
+        y = y.reshape(batch_size, self.lstm_hidden_size)
+        y = self.fc_out(y)
+        return y
 
 
 class EntailmentTransformer(nn.Module):
@@ -211,7 +213,7 @@ class StaticEntailmentNet(AbstractClassifierModel):
                 self.plot_loss()
 
             if self.model_is_validating and self.early_stopping(validation_loss):
-                self.early_stopping.save_trigger_times()
+                self.save_checkpoint()
                 return None
 
         print('Finished Training.')
@@ -241,7 +243,10 @@ class StaticEntailmentNet(AbstractClassifierModel):
         outputs = self.model(inputs, masks)
         predictions = self._minibatch_predictions(outputs)
 
-        loss = criterion(outputs, labels) + self.regularisation(self.model)
+        regularisation_loss = self.regularisation(self.model) / (2 * batch_size)
+        print(f"REGULARISATION LOSS: {regularisation_loss}")
+
+        loss = criterion(outputs, labels) + regularisation_loss
         loss.backward()
         self.optimizer.step()
         accuracy = self.accuracy(predictions, labels)
@@ -310,8 +315,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
     def save(self) -> None:
         super().save()
-        if self.model_is_validating:
-            self.validation_history.save()
         return None
 
     def save_model_history(self) -> None:

@@ -45,9 +45,9 @@ def is_noun_verb(tree1: Tree, tree2: Tree) -> bool:
 
 
 def is_verb(tree: Tree) -> bool:
-    if tree[0] is None:
-        return False
     label = tree.label()
+    if tree[0] is None or label is None:
+        return False
     if label == '':
         return False
     if label[0].lower() == 'v':
@@ -56,9 +56,9 @@ def is_verb(tree: Tree) -> bool:
 
 
 def is_noun(tree: Tree) -> bool:
-    if tree[0] is None:
-        return False
     label = tree.label()
+    if tree[0] is None or label is None:
+        return False
     if label == '':
         return False
     label = label.lower()
@@ -72,9 +72,9 @@ def is_noun(tree: Tree) -> bool:
 
 
 def is_adjective(tree: Tree, adjective_labels=default_adjective_labels) -> bool:
-    if tree[0] is None:
-        return False
     label = tree.label()
+    if tree[0] is None or label is None:
+        return False
     if label == '':
         return False
     if label.lower() in adjective_labels:

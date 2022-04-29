@@ -1,1 +1,1 @@
-Contains training/validation/testing data split.
+Contains training/validation/test_depth data split.

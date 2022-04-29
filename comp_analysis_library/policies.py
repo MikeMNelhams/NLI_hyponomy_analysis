@@ -1,6 +1,6 @@
-from typing import Tuple
+import copy
 
-from NLI_hyponomy_analysis.comp_analysis_library.rules import Rule, DefaultRule
+from NLI_hyponomy_analysis.comp_analysis_library.rules import Rule, DefaultRule, Normalisation
 
 import NLI_hyponomy_analysis.comp_analysis_library.conditions as cond
 import NLI_hyponomy_analysis.comp_analysis_library.operations as op
@@ -29,6 +29,15 @@ class Policy:
         assert isinstance(default_rule, DefaultRule), InvalidDefaultRule
         self.rules = list_of_rules
         self.default_rule = default_rule
+        self.product_scaling = 1
+
+    def __deepcopy__(self, memodict={}):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memodict[id(self)] = result
+        for key, value in self.__dict__.items():
+            setattr(result, key, copy.deepcopy(value, memodict))
+        return result
 
     def __call__(self, parent_label: str, *trees) -> Tree:
         number_of_trees = len(trees)
@@ -44,11 +53,13 @@ class Policy:
                 if rule(*trees):
                     resulting_tree = rule.function(*trees)
                     resulting_tree.set_label = parent_label
+                    self.product_scaling *= rule.normalisation.previous_product_scaling
                     return resulting_tree
 
         if self.default_rule(*trees):
             resulting_tree = self.default_rule.function(*trees)
             resulting_tree.set_label(parent_label)
+            self.product_scaling *= self.default_rule.normalisation.previous_product_scaling
             return resulting_tree
         return Tree(parent_label, [None])
 
@@ -72,8 +83,25 @@ def only_mult() -> Policy:
     return Policy([], default_rule)
 
 
+def only_mult_trace() -> Policy:
+    default_rule = DefaultRule.default_r2l()
+    default_rule.normalisation = Normalisation("trace")
+    return Policy([], default_rule)
+
+
+def only_mult_maxeig() -> Policy:
+    default_rule = DefaultRule.default_r2l()
+    default_rule.normalisation = Normalisation("maxeig")
+    return Policy([], default_rule)
+
+
 def only_projection() -> Policy:
     default_rule = DefaultRule.default_r2l(bivariate_operator=op.mmult1)
+    return Policy([], default_rule)
+
+
+def only_addition() -> Policy:
+    default_rule = DefaultRule.default_r2l(bivariate_operator=op.add)
     return Policy([], default_rule)
 
 

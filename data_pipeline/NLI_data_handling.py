@@ -18,7 +18,7 @@ from nltk.tokenize import word_tokenize
 import csv
 import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 import NLI_hyponomy_analysis.data_pipeline.word_operations as word_op
-from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser, ProcessingSynonyms
+from NLI_hyponomy_analysis.data_pipeline.word_operations import WordParser, ProcessingSynonyms, standardise_label
 
 
 class BatchSizeTooLargeError(Exception):
@@ -48,8 +48,9 @@ class InvalidBatchMode(Exception):
         super().__init__(self.message)
 
 
-class Batch:
+class Batch(list):
     def __init__(self, list_batch: List[Any]):
+        super(Batch, self).__init__(list_batch)
         self.data = list_batch
         self.is_single_field = False
 
@@ -97,9 +98,27 @@ class GoldLabelBatch(Batch):
         self.data = list_of_labels
 
     @property
-    def label_count(self):
+    def label_count(self) -> OrderedDict:
         words_list: dict = Counter(self.data)
         return OrderedDict(sorted(words_list.items()))
+
+    @property
+    def label_frequency(self) -> OrderedDict:
+        label_count = self.label_count
+        frequencies = np.array(list(label_count.values()))
+        freq_dict = OrderedDict([(label, freq) for label, freq in zip(self.standard_labels, frequencies)])
+        if "unknown" not in label_count:
+            freq_dict.update({"unknown": 0})
+            freq_dict.move_to_end("unknown", last=False)
+        return freq_dict
+
+    @property
+    def standard_labels(self) -> list:
+        parser = WordParser((str.lower, str.strip))
+        parser.append(standardise_label)
+        labels = list(self.label_count.keys())
+        labels = [parser(label) for label in labels]
+        return labels
 
 
 class EntailmentModelBatch:
@@ -414,13 +433,13 @@ class UniqueWords:
         return all_unique_words
 
     def save_unique_words(self, unique_words) -> None:
-        with open(self.unique_words_file_path, "w") as out_file:
+        with open(self.unique_words_file_path, "w", encoding="utf-8") as out_file:
             writer = csv.writer(out_file)
             writer.writerow(unique_words)
         return None
 
     def load_unique_words(self) -> list:
-        with open(self.unique_words_file_path, "r") as in_file:
+        with open(self.unique_words_file_path, "r", encoding="utf-8") as in_file:
             reader = csv.reader(in_file)
             unique_words = list(reader)
         return unique_words[0]
@@ -731,12 +750,12 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
 
         self._batch_index = 0
 
-        self.file_size = file_op.count_file_lines(self.processed_file_path)
-
         if not self.processed_file_exists:
+            self.file_size = file_op.count_file_lines(self.file_path)
             file_op.make_empty_file_safe(self.processed_file_path)
-
             self.__process_and_save_data(processing_batch_size=processing_batch_size)
+
+        self.file_size = file_op.count_file_lines(self.processed_file_path)
 
         if max_sequence_length is None:
             self.max_words_in_sentence_length = self._get_max_sequence_length()

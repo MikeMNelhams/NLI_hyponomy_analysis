@@ -26,12 +26,61 @@ class RuleConditionSigError(Exception):
         super(RuleConditionSigError, self).__init__(self.message)
 
 
-class Rule:
-    """ If True when rule() is called, returns function"""
+class Normalisation:
+    __names = (False, None, "none", "__max_eig", "maxeig", "trace", "tr")
 
-    def __init__(self, condition: Callable[[Tuple[Tree]], bool], function: Callable[[Tuple[Tree]], Tree]):
+    def __init__(self, norm_mode: str = "none"):
+        correct_norm_mode = norm_mode.lower()
+        self.__assert_valid_norm_mode(correct_norm_mode)
+        self.norm_mode = correct_norm_mode
+        self.__normalise_func = self.__mapping(correct_norm_mode)
+        self.product = 1
+        self.__previous_product = 1
+
+    def __call__(self, x: Tree) -> Tree:
+        return Tree(x.label(), [self.__normalise_func(x[0])])
+
+    def __mapping(self, norm_mode: str) -> callable:
+        maps = {False: self.__none, None: self.__none, "none": self.__none, "__max_eig": self.__max_eig,
+                "maxeig": self.__max_eig, "trace": self.__trace, "tr": self.__trace}
+        return maps[norm_mode]
+
+    @staticmethod
+    def __none(x):
+        return x
+
+    def __max_eig(self, x):
+        maxeig = np.max(np.linalg.eigvalsh(x))
+        self.product *= maxeig
+        self.__previous_product = maxeig
+        x = x / maxeig
+        return x
+
+    def __trace(self, x):
+        divisor = np.trace(x)
+        self.product *= divisor
+        self.__previous_product = divisor
+        x = x / divisor
+        return x
+
+    def __assert_valid_norm_mode(self, norm_mode: str) -> None:
+        if norm_mode not in self.__names:
+            raise TypeError
+        return None
+
+    @property
+    def previous_product_scaling(self):
+        return self.__previous_product
+
+
+class Rule:
+    """ If True when rule() is called, returns bool"""
+
+    def __init__(self, condition: Callable[[Tuple[Tree]], bool], function: Callable[[Tuple[Tree]], Tree],
+                 normalisation: Normalisation=Normalisation()):
         self.condition = condition
-        self.function = function
+        self.normalisation = normalisation
+        self.__function = function
         self._cond_param_num = number_of_pos_args(condition)
         self.__func_param_num = number_of_pos_args(function)
         assert self._cond_param_num == self.__func_param_num, RuleConditionSigError(self._cond_param_num, self.__func_param_num)
@@ -41,6 +90,9 @@ class Rule:
 
     def __len__(self):
         return self._cond_param_num
+
+    def function(self, *trees: Tuple[Tree]) -> Tree:
+        return self.normalisation(self.__function(*trees))
 
     @staticmethod
     def right_only_if(condition: Callable[[Tree, Tree], bool]=cond.left_tree_is_ignored) -> Rule:

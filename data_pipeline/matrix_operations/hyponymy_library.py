@@ -2,6 +2,7 @@ from enum import Enum
 
 import random
 import numpy as np
+import scipy.special
 import sklearn.metrics as metrics
 
 from NLI_hyponomy_analysis.data_pipeline.matrix_operations import matrix_library as matrix
@@ -142,6 +143,12 @@ def k_mult(a, b, tol=1e-8) -> np.array:
         p = np.outer(vector, vector)
         ab += val * p.dot(b.dot(p))
     return ab
+
+
+def k_similar(x, y):
+    entropy_x = scipy.special.xlogy(x, x)
+    entropy_xy = scipy.special.xlogy(x, y)
+    return 1 / (1 + np.trace(entropy_x - entropy_xy))
 
 
 def kraus(list_of_matrices, verb_operator=True, phrase_type='SV'):
