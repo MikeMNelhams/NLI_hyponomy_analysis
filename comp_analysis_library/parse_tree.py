@@ -5,6 +5,8 @@ import copy
 from nltk import Tree
 from functools import reduce
 from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy
+from typing import Callable
+import numpy as np
 
 
 class ChildAlreadyExistsError(Exception):
@@ -71,6 +73,7 @@ class ParseTree:
                 print("tree given:", tree)
                 raise ZeroDivisionError
             vector = subtree[0]
+
             if isinstance(vector, str):
                 vector = self.word_vectors.safe_lookup(vector)
             tree_list[i] = Tree(subtree.label(), [vector])
@@ -88,6 +91,29 @@ class ParseTree:
     def pos_string_to_binary_tree(pos_string: str):
         parsed_tree = Tree.fromstring(pos_string, remove_empty_top_bracketing=False)
         return parsed_tree
+
+    def metric(self, parse_tree2: ParseTree, binary_metric: Callable[[np.array, np.array], float], default: float=0.0):
+        if len(parse_tree2.data) > 1:
+            raise TypeError
+
+        vector1 = self.data[0]
+        vector2 = parse_tree2.data[0]
+        if vector1 is None or vector2 is None:
+            return default
+
+        try:
+            vector1_rescaled = vector1 / parse_tree2.policy.product
+            vector2_rescaled = vector2 / self.policy.product
+
+            if np.all(vector1_rescaled == 0) or np.all(vector2_rescaled == 0):
+                return default
+
+            result = binary_metric(vector1_rescaled, vector2_rescaled)
+        except np.linalg.LinAlgError:
+            return default
+        if np.isnan(result):
+            return default
+        return float(result)
 
 
 def main():

@@ -17,7 +17,6 @@ from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import NLI_DataLoader
 
 from sklearn.metrics import confusion_matrix, accuracy_score
 
-
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
 #   Paper: https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf
 
@@ -106,7 +105,9 @@ class EarlyStoppingTraining:
 
         self.trigger_times = 0
         if self.triggers_file_writer.file_exists:
-            self.trigger_times = int(self.triggers_file_writer.load_safe())
+            trigger_times = self.triggers_file_writer.load_safe()
+            if trigger_times != '':
+                self.trigger_times = int()
 
         # For saving checkpoints during each __call__
         self.save_checkpoint = save_checkpoint
@@ -483,7 +484,7 @@ class History:
 
         return ax
 
-    def plot_accuracy(self, axes=None, title='') -> plt.axes:
+    def plot_accuracy(self, axes=None, title='', fontsize: int=20) -> plt.axes:
         assert self.is_file(), FileNotFoundError
         epoch_steps = range(len(self))
 
@@ -498,6 +499,7 @@ class History:
 
         ax.plot(epoch_steps, figure_acc, label=self.label)
         ax.set_title(title)
+        ax.titlesize = fontsize
         ax.set_xlabel('Epoch')
         ax.set_ylabel('Accuracy')
 
@@ -614,8 +616,10 @@ class EntailmentSelfAttention(nn.Module):
             mask_reshaped = mask_reshaped.unsqueeze(-1).expand(-1, -1, -1, -1, value_len)
 
             energy = energy.masked_fill(mask_reshaped == 0, float("-1e20"))
+        del mask_reshaped
 
-        attention_softmax = torch.softmax(energy / (key_len ** (1 / 2)), dim=3)
+        divisor = key_len ** (1 / 2)
+        attention_softmax = torch.softmax(energy / divisor, dim=3)
 
         attention = torch.einsum("nshql,nslhd->nsqhd", [attention_softmax, values])
         # Back to the original shape

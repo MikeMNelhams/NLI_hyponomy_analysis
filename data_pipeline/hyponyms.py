@@ -19,6 +19,7 @@ class Hyponyms(file_op.DictWriter):
             self.save(self.hyponyms)
         else:
             self.hyponyms = self.load()
+            self.hyponyms = {key: value for key, value in self.hyponyms.items() if key in unique_words}
 
     def __repr__(self):
         return str(self.hyponyms)
@@ -28,7 +29,7 @@ class Hyponyms(file_op.DictWriter):
 
         def hypo(_s):
             return _s.hyponyms()
-
+        total = 0
         hyponyms = {word: [] for word in word_list}
         count = 0
         for word in word_list:
@@ -49,6 +50,8 @@ class Hyponyms(file_op.DictWriter):
                 hyponyms[word] = list(set(hyponyms[word]))
             else:
                 hyponyms[word] = 'OOV'
+                total += 1
+        print(f"From all the words, {100*total/count}% are NOT hyponyms")
         return hyponyms
 
 
@@ -58,15 +61,22 @@ class DenseHyponymMatrices:
                  normalisation=False):
         self.normalisation = normalisation
 
-        if hyponyms is None or embedding_vectors is None:
-            raise TypeError(f"hyponyms and hyponym_vectors cannot be None!")
+        if embedding_vectors is None:
+            raise TypeError(f"hyponym_vectors cannot be None!")
 
-        # We don't want to save/load this. Since time to load scales O(n^2). But time to generate is O(n).
-        self.density_matrices = self.__density_matrices(hyponyms.hyponyms, embedding_vectors)
+        if hyponyms is not None:
+            # We don't want to save/load this. Since time to load scales O(n^2). But time to generate is O(n).
+            self.density_matrices = self.__density_matrices(hyponyms.hyponyms, embedding_vectors)
+        else:
+            self.density_matrices = embedding_vectors
+
+        # Remove empty string (sometimes contained in big GloVe vector lists)
         try:
             del self.density_matrices[""]
         except KeyError:
             pass
+
+        # Filter the 'OOV' pairs
         self.density_matrices = {key: value for key, value in self.density_matrices.items() if type(value) != str}
         self.d_emb = self.__get_d_emb(self.density_matrices)
 
@@ -97,47 +107,39 @@ class DenseHyponymMatrices:
         obj.normalisation = False
         return obj
 
-    def __density_matrices(self, hyp_dict: dict, hypo_vectors: dict) -> Dict[str, np.array]:
-        dim = len(random.choice(list(hypo_vectors.values())))  # dim= length of arbitrary vector, all same
-        vocab = list(hyp_dict.keys())
-        vectors = {word: np.zeros([dim, dim]) for word in vocab}
+    def __density_matrices(self, hyponym_dict: dict, hyponym_vectors: dict) -> Dict[str, np.array]:
+        dim = len(list(hyponym_vectors.values())[0])  # dim = length of first vector, all same
+        vectors = {word: np.zeros([dim, dim]) for word in hyponym_dict.keys()}
 
-        if self.normalisation not in ("trace1", "maxeig1", False):
-            warn('Possible arguments to normalisation are "trace1", "maxeig1" or False (default). '
-                 f'You entered {self.normalisation}')
-            warn('Setting normalisation to False')
-            self.normalisation = False
+        self._assert_valid_normalisation_type()
 
-        for word in hyp_dict:
-            if hyp_dict[word] == 'OOV':
-                if word not in hypo_vectors:
+        for word in hyponym_dict:
+            if hyponym_dict[word] == 'OOV':
+                if word not in hyponym_vectors:
                     continue
-                v = hypo_vectors[word]
+                v = hyponym_vectors[word]
                 vectors[word] = np.outer(v, v)
             else:
-                for hyp in hyp_dict[word]:
+                for hyponym in hyponym_dict[word]:
                     try:
-                        if hyp not in hypo_vectors:
+                        if hyponym not in hyponym_vectors:
                             continue
                     except Exception as e:
-                        print(hyp)
+                        print(hyponym)
                         raise e
-                    v = hypo_vectors[hyp]  # make sure I alter the Hearst code
-                    vv = np.outer(v, v)
-                    vectors[word] += vv
+                    hyponym_vector = hyponym_vectors[hyponym]
+                    vectors[word] += np.outer(hyponym_vector, hyponym_vector)
 
             v = vectors[word]
-            if not self.normalisation:
-                pass
-            elif np.all(v == 0):
+            if np.all(v == 0):
                 vectors[word] = 'OOV'
-                continue
-            if self.normalisation == 'trace1':
-                v = v / np.trace(v)
+            elif not self.normalisation:
+                pass
+            elif self.normalisation == 'trace1':
+                v /= np.trace(v)
                 vectors[word] = v
             elif self.normalisation == 'maxeig1':
-                maxeig = np.max(np.linalg.eigvalsh(v))
-                v = v / maxeig
+                v /= np.max(np.linalg.eigvalsh(v))
                 vectors[word] = v
 
         print('Done generating hyponym vectors')
@@ -169,7 +171,7 @@ class DenseHyponymMatrices:
         return vector
 
     def remove_all_except(self, words: list) -> None:
-        self.density_matrices = {key: value for key, value in self.density_matrices.items() if key not in words}
+        self.density_matrices = {key: value for key, value in self.density_matrices.items() if key in words}
         return None
 
     def flatten(self) -> None:
@@ -230,6 +232,14 @@ class DenseHyponymMatrices:
     def __shape(self):
         shape = list(self.density_matrices.values())[0].shape
         return shape
+
+    def _assert_valid_normalisation_type(self) -> None:
+        if self.normalisation not in ("trace1", "maxeig1", False):
+            warn('Possible arguments to normalisation are "trace1", "maxeig1" or False (default). '
+                 f'You entered {self.normalisation}')
+            warn('Setting normalisation to False')
+            self.normalisation = False
+        return None
 
 
 def main():

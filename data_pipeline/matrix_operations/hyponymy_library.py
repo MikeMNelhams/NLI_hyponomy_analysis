@@ -97,7 +97,14 @@ def k_e(a, b, tol=1e-8) -> float:
 
     eigenvalues_real = eigenvalues.real
     e = np.diag([e if e < 0 else 0 for e in eigenvalues_real])
-    metric = 1-np.linalg.norm(e)/np.linalg.norm(a)
+    numerator = np.linalg.norm(e)
+    denominator = np.linalg.norm(a)
+    if denominator == 0:
+        return 1
+    fraction = numerator/denominator
+    if fraction > 1:
+        return 0
+    metric = 1 - fraction
     return metric
 
 

@@ -22,6 +22,14 @@ def mmult2(tree1: Tree, tree2: Tree) -> Tree:
     return Tree(None, [hl.mmult2(tree1[0], tree2[0])])
 
 
+def mmult_o(tree1: Tree, tree2: Tree, tree3: Tree) -> Tree:
+    return mmult1(tree1, mmult1(tree3, tree2))
+
+
+def mmult_s(tree1: Tree, tree2: Tree, tree3: Tree) -> Tree:
+    return mmult1(tree3, mmult1(tree1, tree2))
+
+
 def pairwise_product_with_ignored_labels(tree1: Tree, tree2: Tree,
                                          bivariate_operator: Callable[[Tree, Tree], Tree]=mult,
                                          ignore_labels: Iterable[str]=('ls', 'pos', '.', 'dt', ',')) -> Tree:

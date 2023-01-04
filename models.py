@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from model_errors import ModelAlreadyTrainedError, ModelIsNotValidatingError
 from model_library import HyperParams, EntailmentEncoder, AbstractClassifierModel, History, EarlyStoppingTraining
 
+from comp_analysis_library import policies
+
 from data_pipeline.NLI_data_handling import NLI_DataLoader_abc
 
 
@@ -89,8 +91,8 @@ class EntailmentTransformer(nn.Module):
         # Model structure
         self.encoder = EntailmentEncoder(self.num_sentences, max_seq_len,
                                          embed_size=self.embed_size, hyper_parameters=self.hyper_params)
-        self.fc1 = nn.Linear(self.encoder_flattened_size, max_seq_len, bias=True)
-        self.fc2 = nn.Linear(max_seq_len, 75, bias=True)
+        self.fc1 = nn.Linear(self.encoder_flattened_size, max_seq_len // 2, bias=True)
+        self.fc2 = nn.Linear(max_seq_len // 2, 75, bias=True)
         self.fc_out = nn.Linear(75, number_of_output_classes, bias=False)
         self.relu = nn.ReLU()
 
@@ -199,7 +201,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
 
             epoch_end_time = time.perf_counter()
             self.info.add_runtime(epoch_end_time - epoch_start_time)
-
             self.history.step(float(running_loss), running_accuracy)
 
             validation_loss = None
@@ -239,8 +240,10 @@ class StaticEntailmentNet(AbstractClassifierModel):
         # Zero the parameter gradients.
         self.optimizer.zero_grad()
 
-        # Forward -> backward -> optimizer
-        outputs = self.model(inputs, masks)
+        # Casts operations to mixed precision
+        with torch.cuda.amp.autocast():
+            # Forward -> backward -> optimizer
+            outputs = self.model(inputs, masks)
         predictions = self._minibatch_predictions(outputs)
 
         regularisation_loss = self.regularisation(self.model) / (2 * batch_size)

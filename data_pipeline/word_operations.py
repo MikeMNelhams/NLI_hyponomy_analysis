@@ -3,12 +3,19 @@ from typing import List
 
 import re
 from nltk.stem import WordNetLemmatizer
+import itertools
 
 
 label_mapping = {"f": "contradiction", "t": "entailment", "-": "unknown",
                  "contradiction": "contradiction", "entailment": "entailment", "neutral": "neutral"}
 
 bad_chars = ['\u00a0']
+
+
+pos_tags = {"ROOT", "(", ")", ".", "CC", "CD", "DT", "EX", "IN", "JJ", "JJR", "JJS", "LS", "MD", "NN",
+            "NNP", "NNS", "NP", "PP", "PDT", "POS", "PRP", "PRP$", "RB", "RBR", "RBS", "RP", "S", "TO",
+            "UH", "VB", "VP", "VBD", "VBG", "VBN", "VBP", "VBZ", "WDT", "WP", "WRB", "FRAG", "ADJP", "ADVP",
+            "SBAR"}
 
 
 def standardise_label(label: str) -> str:
@@ -35,6 +42,18 @@ def find_all_pos_tags(sentence: str) -> List[str]:
     tags = re.findall(r"\([A-Za-z]* [A-Za-z]*\)", sentence)
     tags = [tag[1:-1] for tag in tags]
     return tags
+
+
+def split_by_pos_tags(sentence: str) -> (List[str], List[str]):
+    tags = re.findall(r"\([A-Za-z]* [A-Za-z]*\)", sentence)
+    tags = [tag[1:-1] for tag in tags]
+    tag_string = r'|'.join(tags)
+    remaining = re.split(tag_string, sentence)
+    return remaining, tags
+
+
+def interleave(*lists) -> list:
+    return [x for x in itertools.chain(*itertools.zip_longest(*lists)) if x is not None]
 
 
 def pos_string_to_literal(pos_string) -> str:
@@ -158,6 +177,10 @@ def remove_speech_marks(word: str) -> str:
     return word.replace('"', '')
 
 
+def replace_commas_for_periods(word: str) -> str:
+    return word.replace(',', '.')
+
+
 def remove_utf8_bad_chars(word: str) -> str:
     return remove_punctuation(word, bad_chars)
 
@@ -199,6 +222,31 @@ def lemmatise_sentence_pos(sentence: str) -> str:
     return ' '.join(words)
 
 
+def lemmatise_sentence_pos_tag(sentence: str) -> str:
+    lemmatiser = WordNetLemmatizer()
+    remaining, tags = split_by_pos_tags(sentence)
+
+    def split_tags(tag):
+        for i in range(len(tag)):
+            if tag[i] == ' ':
+                return [tag[:i], tag[i + 1:]]
+        raise TypeError
+
+    def lemmatise(word: str, tag: str) -> str:
+        first_letter = tag[0]
+        valid_tags = ('a', 'n', 'v', 'r', 's')
+
+        if first_letter in valid_tags:
+            return lemmatiser.lemmatize(word, pos=first_letter)
+
+        return lemmatiser.lemmatize(word)
+
+    pos = [split_tags(tag.lower()) for tag in tags]
+    words = [f"{part[0].upper()} {lemmatise(part[1], part[0])}" for part in pos]
+    lemmatised_sentence = ''.join(interleave(remaining, words))
+    return lemmatised_sentence
+
+
 class InvalidProcessingMode(Exception):
     """ When a given processing mode is not implemented yet"""
     pass
@@ -208,6 +256,7 @@ class ProcessingSynonyms:
     synonyms_for_l = ("lemmatise", "lemmatised", "lemma")
     synonyms_for_cl = ("clean_lemmatise", "clean_lemmatised", "cl", "both", "clean_lemma")
     synonyms_for_l_pos = ("lemma_pos", "lemmatised_pos", "l_pos", "lpl", "lemmatise_pos")
+    synonyms_for_l_pos_tag = ("lemma_pos_tag", "lemmatised_pos_tag", "l_pos_tag", "lplt", "lemmatise_pos_tag")
 
     @staticmethod
     def map_processing_mode(mode: str) -> str:
@@ -246,6 +295,10 @@ class WordParser:
     @staticmethod
     def default_lemmatisation_pos() -> "WordParser":
         return WordParser([lemmatise_sentence_pos])
+
+    @staticmethod
+    def default_lemmatisation_pos_tag() -> "WordParser":
+        return WordParser([lemmatise_sentence_pos_tag, replace_commas_for_periods])
 
     @staticmethod
     def default_remove_bar_chars() -> "WordParser":

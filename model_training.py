@@ -6,6 +6,10 @@ from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoade
 from model_library import HyperParams, Regularisation
 from models import NeuralNetwork, StaticEntailmentNet, LSTM, EntailmentTransformer
 from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, Hyponyms
+from sklearn.model_selection import GridSearchCV
+import torch
+
+torch.cuda.empty_cache()
 
 
 def main():
@@ -26,27 +30,29 @@ def main():
     word_vectors_0.load_memory()
     word_vectors_0.remove_all_except(train_loader.unique_words)
 
-    # hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_train_lemma_pos.json", train_loader.unique_words)
-    #
-    # word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
-    # word_vectors.flatten()
+    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_train_lemma_pos.json", train_loader.unique_words)
 
-    num_layers = 3
+    word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
+    word_vectors.flatten()
+
+    num_layers = 6
     l2_coefficient = 0.03
 
     l2_str = str(l2_coefficient).replace(".", "_")
     regularisation = Regularisation(l2=l2_coefficient)
-    params = HyperParams(heads=5, learning_rate=0.001, dropout=0.4, optimizer=optim.Adam,
+    params = HyperParams(heads=5, learning_rate=0.000_1, dropout=0.4, optimizer=optim.Adam,
                          regularisation=regularisation,
                          patience=10, early_stopping_mode="minimum", device='cuda', num_layers=num_layers)
 
     mike_net = StaticEntailmentNet(word_vectors_0, train_loader,
-                                   file_path=f'data/models/lstm_200/glove_full_model_{num_layers}_layers_random_l2_{l2_str}.pth',
+                                   file_path=f'data/models/lstm_200/glove_finalTEST_model_3_layers_sequential2_l2_{l2_str}.pth',
                                    hyper_parameters=params, classifier_model=LSTM,
                                    validation_data_loader=validation_loader)
     mike_net.count_parameters()
-    # mike_net.unlock()
-    # mike_net.train(epochs=100, batch_size=1024, print_every=1, batch_loading_mode="random")
+    mike_net.unlock()
+    mike_net.train(epochs=50, batch_size=512, print_every=1, batch_loading_mode="sequential")
+    # mike_net.plot_loss()
+    # mike_net.plot_accuracy()
     mike_net.test(test_loader)
 
 

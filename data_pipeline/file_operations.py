@@ -162,6 +162,28 @@ def root_dir(path: str) -> str:
     return path[:root_end]
 
 
+def parent_path_name(path: str) -> str:
+    if len(path) <= 1:
+        raise InvalidPathError
+
+    start = 0
+    end = 0
+    if len(path) <= 1:
+        raise InvalidPathError
+    for i, char in enumerate(reversed(path)):
+        if char == '/' or char == '\\':
+            if start != 0:
+                end = i
+                break
+            start = i + 1
+
+    parent_path_str = path
+    if end != 0:
+        parent_path_str = path[-end:-start]
+
+    return parent_path_str
+
+
 def trim_end_of_file_blank_line(file_path: str) -> None:
     with open(file_path, 'r') as in_file:
         data = in_file.read()
@@ -290,6 +312,8 @@ class DictWriter:
 class TextWriterSingleLine:
     def __init__(self, file_path: str):
         self.file_path = file_path
+        if not self.file_exists:
+            make_empty_file(file_path)
 
     @property
     def file_exists(self):

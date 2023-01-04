@@ -13,9 +13,9 @@ def universal_true(*args) -> bool:
 
 def does_not_contain_none_tree(*trees: Tuple[Tree]) -> bool:
     for tree in trees:
-        if tree[0] is not None:
-            return True
-    return False
+        if tree[0] is None:
+            return False
+    return True
 
 
 def is_ignored(tree: Tree, ignore_labels=default_ignored_labels) -> bool:
@@ -80,3 +80,7 @@ def is_adjective(tree: Tree, adjective_labels=default_adjective_labels) -> bool:
     if label.lower() in adjective_labels:
         return True
     return False
+
+
+def is_noun_verb_noun(tree1: Tree, tree2: Tree, tree3: Tree) -> bool:
+    return is_noun(tree1) and is_verb(tree2) and is_noun(tree3)

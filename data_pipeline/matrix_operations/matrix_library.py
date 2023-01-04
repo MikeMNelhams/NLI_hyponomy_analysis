@@ -62,11 +62,11 @@ def projection(a: np.array, b: np.array, tol=1e-8) -> np.array:
     """ a is outer, b is middle"""
     # verb_sqrt = matrix_sqrt(a)
     try:
-        verb_sqrt = sqrtm(a)
+        a_sqrt = np.real(sqrtm(a))
     except ValueError as e:
         print(a)
         raise e
-    mat = np.matmul(np.matmul(verb_sqrt, b), verb_sqrt)
+    mat = np.matmul(np.matmul(a_sqrt, b), a_sqrt)
     return mat
 
 
