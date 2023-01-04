@@ -23,6 +23,9 @@ from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy
 from NLI_hyponomy_analysis.comp_analysis_library.parse_tree import ParseTree
 
 
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
 class BatchSizeTooLargeError(Exception):
     """ When the specified batch size > file size"""
 
@@ -128,7 +131,7 @@ class EntailmentModelBatch:
 
     def __init__(self, sentence1_batch: Iterable, sentence2_batch: Iterable, labels: Iterable,
                  max_sequence_len: int, word_delimiter=' '):
-
+        self.device = device
         self.class_label_encoding = {'entailment': 0,
                                      'neutral': 1,
                                      'contradiction': 2,
@@ -273,11 +276,11 @@ class EntailmentModelBatch:
 
         padded_tensor = torch.tensor([[self.__get_vector(word, word_vectors, padding_list, unknown_word_vector)
                                        for word in self.__pad_row(row, pad_value)]
-                                      for row in data_to_process], dtype=torch.float32)
+                                      for row in data_to_process], dtype=torch.float32, device=self.device)
 
         padding_mask_tensor = torch.tensor([[1 if word != 0 else 0
                                              for word in self.__pad_row(row, pad_value)]
-                                            for row in data_to_process])
+                                            for row in data_to_process], device=self.device)
 
         desired_mask_shape = (-1, -1, embed_vector_length)
 
@@ -324,10 +327,10 @@ class EntailmentModelBatch:
         embed_size = tensor_input.shape[2]
         pad = tensor_input.shape[1]
         if pad_value != 0:
-            pad_tensor = torch.ones((self.batch_size, max_pad - pad, embed_size))
+            pad_tensor = torch.ones((self.batch_size, max_pad - pad, embed_size), device=self.device)
             pad_tensor = torch.multiply(pad_tensor, pad_value)
             return torch.concat((tensor_input, pad_tensor), dim=1)
-        pad_tensor = torch.zeros((self.batch_size, max_pad - pad, embed_size))
+        pad_tensor = torch.zeros((self.batch_size, max_pad - pad, embed_size), device=self.device)
         return torch.concat((tensor_input, pad_tensor), dim=1)
 
     def __get_labels_encoding(self) -> torch.tensor:
@@ -338,7 +341,7 @@ class EntailmentModelBatch:
                            else self.class_label_encoding['-']
                            for label in self.data[:, label_column_number]]
 
-        one_hot_labels = torch.tensor(label_encodings)
+        one_hot_labels = torch.tensor(label_encodings, device=self.device)
         if one_hot_labels.shape[0] == 1:
             return torch.squeeze(one_hot_labels)
         return one_hot_labels
@@ -362,6 +365,7 @@ class PolicyEvaluatedBatch:
     """ [[sentence1: POS TAGGED str], [sentence2: POS TAGGED str], [label: POS TAGGED str]]"""
     def __init__(self, sentence1_list: List[str], sentence2_list: List[str], labels: Iterable,
                  word_vectors, policy: Policy):
+        self.device = device
         self.class_label_encoding = {'entailment': 0,
                                      'neutral': 1,
                                      'contradiction': 2,
@@ -402,7 +406,7 @@ class PolicyEvaluatedBatch:
                            else self.class_label_encoding['-']
                            for label in self.data[:, label_column_number]]
 
-        one_hot_labels = torch.tensor(label_encodings)
+        one_hot_labels = torch.tensor(label_encodings, device=self.device)
         if one_hot_labels.shape[0] == 1:
             return torch.squeeze(one_hot_labels)
         return one_hot_labels
@@ -432,28 +436,12 @@ class DictBatch(Batch):
         return len(self)
 
     def to_sentence_batch(self, field_name: str) -> SentenceBatch:
-        if field_name not in self.sentence_fields:
-            raise InvalidBatchKeyError
-
-        def get_sentence(line):
-            if not line:
-                return ''
-            else:
-                return line[field_name]
-
-        return SentenceBatch([get_sentence(line) for line in self])
+        self.assert_valid_sentence(field_name)
+        return SentenceBatch([self._get_sentence(line, field_name) for line in self])
 
     def to_batch(self, field_name: str):
-        if field_name not in self.sentence_fields:
-            raise InvalidBatchKeyError
-
-        def get_sentence(line):
-            if not line:
-                return ''
-            else:
-                return line[field_name]
-
-        return Batch([get_sentence(line) for line in self])
+        self.assert_valid_sentence(field_name)
+        return Batch([self._get_sentence(line, field_name) for line in self])
 
     def to_labels_batch(self, label_key_name='gold_label') -> GoldLabelBatch:
         for line in self:
@@ -467,8 +455,8 @@ class DictBatch(Batch):
         return labels
 
     def to_model_data(self, model_fields=('sentence1', 'sentence2', 'gold_label')) -> EntailmentModelBatch:
-        sentence1_list = self.to_sentence_batch(model_fields[0]).data
-        sentence2_list = self.to_sentence_batch(model_fields[1]).data
+        sentence1_list = self.to_batch(model_fields[0]).data
+        sentence2_list = self.to_batch(model_fields[1]).data
         labels = self.to_labels_batch(model_fields[2]).data
 
         return EntailmentModelBatch(sentence1_list, sentence2_list, labels, self.max_sequence_len)
@@ -491,6 +479,17 @@ class DictBatch(Batch):
         except KeyError as e:
             print(self)
             raise e
+
+    @staticmethod
+    def _get_sentence(line, field_name: str):
+        if not line:
+            return ''
+        return line[field_name]
+
+    def assert_valid_sentence(self, field_name: str) -> None:
+        if field_name not in self.sentence_fields:
+            raise InvalidBatchKeyError
+        return None
 
 
 class UniqueWords:
@@ -1032,7 +1031,6 @@ class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
     def __read_range_faster(self, start_index: int, end_index: int) -> list:
         if start_index == end_index:
             return self.__read_line_faster(start_index)
-
         return self.data[start_index:end_index]
 
     def __read_line_faster(self, line_number: int) -> list:

@@ -232,11 +232,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
         labels = batch.labels_encoding
         del batch
 
-        # Put all on GPU
-        inputs = inputs.to(self.hyper_parameters.device)
-        masks = masks.to(self.hyper_parameters.device)
-        labels = labels.to(self.hyper_parameters.device)
-
         # Zero the parameter gradients.
         self.optimizer.zero_grad()
 
@@ -296,10 +291,6 @@ class StaticEntailmentNet(AbstractClassifierModel):
             lines, masks = test_data.to_tensors(self.word_vectors, pad_value=1e-20, max_length=self.max_length)
             labels = test_data.labels_encoding
 
-            # To device (GPU)
-            lines = lines.to(self.hyper_parameters.device)
-            masks = masks.to(self.hyper_parameters.device)
-            labels = labels.to(self.hyper_parameters.device)
             outputs = self.model(lines, masks)
 
             for label, prediction in zip(labels, torch.argmax(outputs, dim=1)):

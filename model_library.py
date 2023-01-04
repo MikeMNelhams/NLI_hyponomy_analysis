@@ -690,7 +690,7 @@ class EntailmentEncoder(nn.Module):
         assert num_sentences == self.num_sentences
 
         # Positional encoding
-        positions = torch.arange(0, sequence_length).expand(batch_size, sequence_length).to(self.hyper_params.device)
+        positions = torch.arange(0, sequence_length).expand(batch_size, sequence_length)
         positions_out = self.position_embedding(positions)
         positions_out = positions_out.unsqueeze(-1).expand(-1, -1, -1, num_sentences)  # Duplicate across num sentences
         positions_out = positions_out.permute(0, 3, 1, 2)
