@@ -421,16 +421,15 @@ class DictBatch(Batch):
 
     def __init__(self, list_of_dicts: List[dict], max_sequence_len):
         super().__init__(list_of_dicts)
-        self.data = list_of_dicts
         try:
-            self.headers = self.data[0].keys()
+            self.headers = self[0].keys()
         except IndexError:
-            print('DATA:', self.data)
+            print('DATA:', self)
             raise ZeroDivisionError
         self.max_sequence_len = max_sequence_len
 
     def __len__(self):
-        return len(self.data)
+        return len(self)
 
     def to_sentence_batch(self, field_name: str) -> SentenceBatch:
         if field_name not in self.sentence_fields:
@@ -442,7 +441,7 @@ class DictBatch(Batch):
             else:
                 return line[field_name]
 
-        return SentenceBatch([get_sentence(line) for line in self.data])
+        return SentenceBatch([get_sentence(line) for line in self])
 
     def to_batch(self, field_name: str):
         if field_name not in self.sentence_fields:
@@ -454,17 +453,17 @@ class DictBatch(Batch):
             else:
                 return line[field_name]
 
-        return Batch([get_sentence(line) for line in self.data])
+        return Batch([get_sentence(line) for line in self])
 
     def to_labels_batch(self, label_key_name='gold_label') -> GoldLabelBatch:
-        for line in self.data:
+        for line in self:
             try:
                 line["gold_label"]
             except Exception as e:
                 print("bad batch: ", line)
                 raise e
 
-        labels = GoldLabelBatch([line[label_key_name] for line in self.data])
+        labels = GoldLabelBatch([line[label_key_name] for line in self])
         return labels
 
     def to_model_data(self, model_fields=('sentence1', 'sentence2', 'gold_label')) -> EntailmentModelBatch:
@@ -486,12 +485,12 @@ class DictBatch(Batch):
         if field_name not in self.sentence_fields:
             raise TypeError
         try:
-            sequence = [line[field_name] if line else '' for line in self.data]
+            sequence = [line[field_name] if line else '' for line in self]
             max_length = word_op.count_max_sequence_length(sequence)
             return max_length
-        except KeyError:
-            print(self.data)
-            raise KeyError
+        except KeyError as e:
+            print(self)
+            raise e
 
 
 class UniqueWords:
@@ -832,86 +831,6 @@ class SNLI_DataLoader_Processed(NLI_DataLoader_abc):
         return None
 
 
-class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
-    def __init__(self, file_path: str, max_sequence_length=None, processing_batch_size: int = 256):
-        super(SNLI_DataLoader_POS_Processed, self).__init__(file_path)
-
-        self.file_dir_path += 'lemmatised_pos' + '/'
-        self.processed_file_path = self.file_dir_path + 'processed.csv'
-        self.unique_words_file_path = self.file_dir_path + 'unique.csv'
-        self.max_len_file_path = self.file_dir_path + 'max_len.txt'
-
-        self.file_load_path = self.processed_file_path
-
-        self._make_dir()
-
-        self._max_sentence_len_writer = file_op.TextWriterSingleLine(self.max_len_file_path)
-
-        self._batch_index = 0
-
-        if not self.processed_file_exists:
-            self.file_size = file_op.count_file_lines(self.file_path)
-            file_op.make_empty_file_safe(self.processed_file_path)
-            self.__process_and_save_data(processing_batch_size=processing_batch_size)
-
-        self.file_size = file_op.count_file_lines(self.processed_file_path)
-
-        if max_sequence_length is None:
-            self.max_words_in_sentence_length = self._get_max_sequence_length()
-        else:
-            self.max_words_in_sentence_length = max_sequence_length
-
-        # Run once at runtime, rather than multiple times at call.
-        self.unique_words = UniqueWords(self).get_unique_words()
-
-    def __temporary_batch_size_schedule(self, batch_size) -> [int]:
-        """ [256, 256, 3] for example of size 515"""
-        number_of_fixed_batch_size_steps = len(self) // batch_size
-
-        remainder_batch_size = len(self) - number_of_fixed_batch_size_steps * batch_size
-        batch_sizes = [batch_size for _ in range(number_of_fixed_batch_size_steps + 1)]
-        batch_sizes[-1] = remainder_batch_size
-
-        if number_of_fixed_batch_size_steps * batch_size == len(self):
-            batch_sizes.pop()
-
-        return batch_sizes
-
-    def __process_and_save_data(self, processing_batch_size: int = 1_000):
-        """ Called once at first instantiation. Slow, slow overhead. Reduces load_as_dataframe time massively."""
-
-        unclean_data_loader = SNLI_DataLoader_Unclean(self.file_path)
-
-        batch_sizes = self.__temporary_batch_size_schedule(processing_batch_size)
-        num_iters = len(batch_sizes)
-
-        # Stops if it has looped across entire dataset.
-        for i, batch_size in enumerate(batch_sizes):
-            print(f"Processing batch ~{i+1} of {num_iters}...")
-            data_batch = unclean_data_loader.load_sequential(batch_size)
-            data_batch = data_batch.to_model_data(['sentence1_parse', 'sentence2_parse', 'gold_label'])
-
-            data_batch.process('lemmatised_pos')
-
-            data_batch.append_to_file(self.processed_file_path)
-
-        file_op.trim_end_of_file_blank_line(self.processed_file_path)
-
-        return None
-
-    @property
-    def processed_file_exists(self):
-        return os.path.isfile(self.processed_file_path)
-
-    def _parse_file_line(self, line: str) -> dict:
-        """ Enumerating lines reads as a single string with a \n on the end. That needs fixing"""
-        out_row = line.split(',')
-        if out_row[-1][-1] == '\n':
-            out_row[-1] = out_row[-1][:-1]  # Remove the \n
-        out_dict = {"sentence1": out_row[0], "sentence2": out_row[1], "gold_label": out_row[-1]}
-        return out_dict
-
-
 class SNLI_DataLoader_POS_tagged(NLI_DataLoader_abc):
     """ Returns the sentences in POS form"""
     def __init__(self, file_path: str, processing_batch_size: int = 256):
@@ -989,6 +908,135 @@ class SNLI_DataLoader_POS_tagged(NLI_DataLoader_abc):
 
     def _max_sequence_len(self, batch_size: int = 1_000) -> int:
         return 1
+
+
+class SNLI_DataLoader_POS_Processed(NLI_DataLoader_abc):
+    def __init__(self, file_path: str, max_sequence_length=None, processing_batch_size: int = 256):
+        super(SNLI_DataLoader_POS_Processed, self).__init__(file_path)
+
+        self.file_dir_path += 'lemmatised_pos' + '/'
+        self.processed_file_path = self.file_dir_path + 'processed.csv'
+        self.unique_words_file_path = self.file_dir_path + 'unique.csv'
+        self.max_len_file_path = self.file_dir_path + 'max_len.txt'
+
+        self.file_load_path = self.processed_file_path
+
+        self._make_dir()
+
+        self._max_sentence_len_writer = file_op.TextWriterSingleLine(self.max_len_file_path)
+
+        self._batch_index = 0
+
+        if not self.processed_file_exists:
+            self.file_size = file_op.count_file_lines(self.file_path)
+            file_op.make_empty_file_safe(self.processed_file_path)
+            self.__process_and_save_data(processing_batch_size=processing_batch_size)
+
+        self.file_size = file_op.count_file_lines(self.processed_file_path)
+
+        if max_sequence_length is None:
+            self.max_words_in_sentence_length = self._get_max_sequence_length()
+        else:
+            self.max_words_in_sentence_length = max_sequence_length
+
+        # Run once at runtime, rather than multiple times at call.
+        self.unique_words = UniqueWords(self).get_unique_words()
+
+        # Keep all the TEXT data in RAM ~ 0.5 GB
+        self.data = self.load_all()
+
+    def load_batch(self, batch_size: int, mode: str, **kwargs) -> DictBatch:
+        if mode == "sequential":
+            return self.load_sequential_faster(batch_size, **kwargs)
+        if mode == "random":
+            return self.load_random(batch_size)
+        raise InvalidBatchMode
+
+    def load_sequential_faster(self, batch_size: int, from_start: bool=False):
+        if from_start:
+            self._batch_index = 0
+
+        if batch_size > self.file_size:
+            raise BatchSizeTooLargeError(batch_size, len(self))
+
+        start_index = self._batch_index
+        end_index = self._batch_index + batch_size
+
+        overlap = False
+        if end_index > self.file_size:
+            overlap = True
+            end_index = self.file_size
+
+        content1 = self.__read_range_faster(start_index, end_index)
+
+        if overlap:
+            end_index_wrapped = batch_size - (self.file_size - start_index)
+            content2 = self.__read_range_faster(0, end_index_wrapped)
+            self._batch_index = end_index_wrapped
+            return self.dict_batch_constructor(content1 + content2, max_sequence_len=self.max_words_in_sentence_length)
+
+        if end_index == self.file_size:
+            self._batch_index = 0
+        else:
+            self._batch_index = end_index
+
+        return self.dict_batch_constructor(content1, max_sequence_len=self.max_words_in_sentence_length)
+
+    def __temporary_batch_size_schedule(self, batch_size) -> [int]:
+        """ [256, 256, 3] for example of size 515"""
+        number_of_fixed_batch_size_steps = len(self) // batch_size
+
+        remainder_batch_size = len(self) - number_of_fixed_batch_size_steps * batch_size
+        batch_sizes = [batch_size for _ in range(number_of_fixed_batch_size_steps + 1)]
+        batch_sizes[-1] = remainder_batch_size
+
+        if number_of_fixed_batch_size_steps * batch_size == len(self):
+            batch_sizes.pop()
+
+        return batch_sizes
+
+    def __process_and_save_data(self, processing_batch_size: int = 1_000):
+        """ Called once at first instantiation. Slow, slow overhead. Reduces load_as_dataframe time massively."""
+
+        unclean_data_loader = SNLI_DataLoader_Unclean(self.file_path)
+
+        batch_sizes = self.__temporary_batch_size_schedule(processing_batch_size)
+        num_iters = len(batch_sizes)
+
+        # Stops if it has looped across entire dataset.
+        for i, batch_size in enumerate(batch_sizes):
+            print(f"Processing batch ~{i+1} of {num_iters}...")
+            data_batch = unclean_data_loader.load_sequential(batch_size)
+            data_batch = data_batch.to_model_data(['sentence1_parse', 'sentence2_parse', 'gold_label'])
+
+            data_batch.process('lemmatised_pos')
+
+            data_batch.append_to_file(self.processed_file_path)
+
+        file_op.trim_end_of_file_blank_line(self.processed_file_path)
+
+        return None
+
+    @property
+    def processed_file_exists(self):
+        return os.path.isfile(self.processed_file_path)
+
+    def _parse_file_line(self, line: str) -> dict:
+        """ Enumerating lines reads as a single string with a \n on the end. That needs fixing"""
+        out_row = line.split(',')
+        if out_row[-1][-1] == '\n':
+            out_row[-1] = out_row[-1][:-1]  # Remove the \n
+        out_dict = {"sentence1": out_row[0], "sentence2": out_row[1], "gold_label": out_row[-1]}
+        return out_dict
+
+    def __read_range_faster(self, start_index: int, end_index: int) -> list:
+        if start_index == end_index:
+            return self.__read_line_faster(start_index)
+
+        return self.data[start_index:end_index]
+
+    def __read_line_faster(self, line_number: int) -> list:
+        return self.data[line_number]
 
 
 if __name__ == "__main__":
