@@ -1,10 +1,12 @@
+# Standard library imports
 import re
-
 import matplotlib.pyplot as plt
 import numpy as np
 from dotenv import load_dotenv
-from typing import List, Any
+from sklearn.metrics import roc_curve, roc_auc_score
+import sklearn.metrics as metrics
 
+# Custom imports
 import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 import NLI_hyponomy_analysis.data_pipeline.word_operations as word_op
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
@@ -14,26 +16,14 @@ from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, H
 from NLI_hyponomy_analysis.comp_analysis_library.parse_tree import ParseTree
 from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy, only_addition, only_mult, verbs_switch, comp_policy1, example_policy, example_policy_no_scaling
 
-import nltk
+# Typing imports
+from typing import Any, List
 
-from sklearn.metrics import roc_curve, roc_auc_score
-
-import os
-
-
+# Constants
 label_mapping = {"t": 1, "entailment": 1, "neutral": 0.5, "f": 0, "contradiction": 0, '-': 0.5}
-label_mapping_multi_class = {"entailment": 2, "neutral": 1, "contradiction": 0}
+label_mapping_multi_class = {"contradiction": 0, "neutral": 1, "entailment": 2}
 label_mapping_multi_class_vectors = {"entailment": [0, 0, 1], "neutral": [0, 1, 0], "contradiction": [1, 0, 0]}
-
-
-def get_test_words(word_sim_dir_path: str) -> List[str]:
-    words = []
-    for i, filename in enumerate(os.listdir(word_sim_dir_path)):
-        for line in open(os.path.join(word_sim_dir_path, filename), 'r'):
-            line = line.strip().lower()
-            word1, word2, _ = line.split()
-            words.extend([word1, word2])
-    return words
+k_bounds = {"k_e": (0, 1), "k_a": (-1, 1)}
 
 
 def make_k_file(data_file_path_k: str) -> None:
@@ -155,17 +145,55 @@ def plot_auc_curve_single(dir_path: str, policy_name: str) -> None:
     return None
 
 
-def plot_auc_curve_multi(dir_path: str, policy_name: str) -> None:
-    fig_save_path = dir_path + "AUC.png"
+def plot_auc_curve_multi_macro_average(dir_path: str, policy_name: str) -> None:
+    fig_save_path = dir_path + "multi_macro_AUC"
     k_e_path = dir_path + "k_e.csv"
     k_a_path = dir_path + "k_a.csv"
 
     k_e_predictions = load_predictions(k_e_path)
     k_a_predictions = load_predictions(k_a_path)
 
-    auc_k_e = auc_multi_class_k_e(k_e_predictions)
-    raise ZeroDivisionError
-    auc_k_a = auc_multi_class(k_a_predictions)
+    roc_points_k_e = auc_multi_class(k_e_predictions, "k_e")
+    roc_points_k_a = auc_multi_class(k_a_predictions, "k_a")
+
+    roc_points_k_e = roc_macro_average_classes(roc_points_k_e)
+    roc_points_k_a = roc_macro_average_classes(roc_points_k_a)
+
+    roc_curves_k_e = roc_scatter_to_roc_curve(roc_points_k_e)
+    roc_curves_k_a = roc_scatter_to_roc_curve(roc_points_k_a)
+
+    plot_roc_curves(roc_curves_k_e, f"ROC Curve for $k_E$ with policy \'{policy_name}\'",
+                    fig_save_path + "_k_e.png", class_names=["macro average ROC"])
+    plot_roc_curves(roc_curves_k_a, f"ROC Curve for $k_{{AB}}$ with policy {policy_name}",
+                    fig_save_path + "_k_a.png", class_names=["macro average ROC"])
+
+    return None
+
+
+def plot_roc_curves(roc_curves, title, fig_save_path: str, class_names=("contradiction", "neutral", "entailment")) -> None:
+    for i, curve_pair in enumerate(roc_curves):
+        plt.plot(curve_pair[0], curve_pair[1], label=class_names[i])
+
+    plt.title(title, fontsize=15)
+    plt.ylabel("True Positive Rate", fontsize=14)
+    plt.xlabel("False Positive Rate", fontsize=14)
+    plt.legend()
+    plt.savefig(fig_save_path)
+    plt.close()
+    return None
+
+
+def roc_macro_average_classes(roc_points: np.array) -> np.array:
+    num_classes = roc_points.shape[2]
+    roc_points_averaged = np.empty((roc_points.shape[0], roc_points.shape[1], 1))
+    roc_points_averaged[:, :, 0] = np.sum(roc_points[:, :, :], axis=2) / num_classes
+    return roc_points_averaged
+
+
+def roc_scatter_to_roc_curve(roc_scatters: np.array):
+    num_classes = roc_scatters.shape[2]
+    output_roc_curves = [roc_corner_points(roc_scatters[:, 0, i], roc_scatters[:, 1, i]) for i in range(num_classes)]
+    return output_roc_curves
 
 
 def auc_single_class(predictions_input) -> (Any, Any, Any, float):
@@ -182,19 +210,74 @@ def auc_single_class(predictions_input) -> (Any, Any, Any, float):
     return fpr, tpr, thresholds, auc
 
 
-def auc_multi_class_k_e(predictions_input):
-    # K_E ranges from 0 to 1
-    # Compute ROC curve and ROC area for each class
+def auc_multi_class(predictions_input, metric: str, num_steps: int=10) -> List[np.array]:
+    # K_E ranges from 0 to 1. K_AB ranges from -1 to 1
+
     predictions = [float(prediction[0]) for prediction in predictions_input]
+    labels = [label_mapping_multi_class.get(prediction[1].lower(), 1) for prediction in predictions_input]
 
-    # predictions = np.array([[1 - prediction, 0, prediction] for prediction in predictions])
+    limits = k_bounds[metric]
 
-    labels = [label_mapping_multi_class.get(prediction[1].lower(), -1) for prediction in predictions_input]
-    labels = np.array([label for label in labels if label != -1])
+    rounding_decimal_precision = 3
+    a_range = np.round(np.linspace(limits[0], limits[1], num_steps+1), rounding_decimal_precision)
 
-    weighted_roc_auc_ovr = roc_auc_score(labels, predictions, multi_class="ovr", average="macro")
+    class_predictions = np.empty((num_steps+1, num_steps+1, len(predictions)))
+    class_predictions.fill(np.nan)
 
-    return weighted_roc_auc_ovr
+    def predict(x: float, upper: float, lower: float) -> int:
+        if x > upper:
+            return 2
+        if x > lower:
+            return 1
+        return 0
+
+    print(f"Generating thresholds between {limits[0]} and {limits[1]}")
+    for i, a in enumerate(a_range):
+        b_range = np.round(np.linspace(limits[0], a, i+1), rounding_decimal_precision)
+        for j, b in enumerate(b_range):
+            for k, value in enumerate(predictions):
+                class_predictions[i, j, k] = predict(value, a, b)
+
+    size = (num_steps * (num_steps + 1)) // 2
+    roc_scatters = np.empty((size, 2, 3))
+
+    counter = 0
+    for i in range(num_steps):
+        for j in range(0, i + 1):
+            prediction_row = class_predictions[i, j, :].flatten()
+
+            confusion_matrix = metrics.confusion_matrix(labels, prediction_row)
+
+            TP = np.diag(confusion_matrix)
+            FP = confusion_matrix.sum(axis=0) - TP
+            FN = confusion_matrix.sum(axis=1) - TP
+            TN = confusion_matrix.sum() - (FP + FN + TP)
+
+            FPR = FP / (FP + TN)
+            TPR = TP / (TP + FN)
+
+            roc_scatters[counter, 0, :] = FPR
+            roc_scatters[counter, 1, :] = TPR
+
+            counter += 1
+
+    return roc_scatters
+
+
+def roc_corner_points(fpr: np.array, tpr: np.array) -> (np.array, np.array):
+    # Taken straight from the documentation. Uses second derivative to find corner points.
+    optimal_idxs = np.where(np.r_[True,
+                                  np.logical_or(np.diff(fpr, 2), np.diff(tpr, 2)),
+                                  True])[0]
+
+    fpr_corners = fpr[optimal_idxs]
+    tpr_corners = tpr[optimal_idxs]
+
+    # Start and end at 0, 1 respectively
+    fpr_corners = np.r_[0, fpr_corners, 1]
+    tpr_corners = np.r_[0, tpr_corners, 1]
+
+    return fpr_corners, tpr_corners
 
 
 def plot_stats_single(plot_dir: str, policy_name) -> None:
@@ -216,7 +299,7 @@ def plot_stats_multi(plot_dir: str, policy_name) -> None:
     scatter(k_e_path, fig_type="k_e")
     scatter(k_a_path, fig_type="k_a")
 
-    plot_auc_curve_multi(plot_dir, policy_name)
+    plot_auc_curve_multi_macro_average(plot_dir, policy_name)
     return None
 
 
@@ -360,25 +443,6 @@ def ks_test_policy(data_path: str, policy: Policy, policy_name: str, batch_size=
     return None
 
 
-def test_depth(data_path: str, depth: int=10):
-    load_dotenv()  # Path to the glove data directory -> HOME="..."
-
-    word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
-    word_vectors_0.load_memory()
-
-    words = get_test_words("data/word-sim")
-    word_vectors_0.remove_all_except(words)
-
-    unique_words = word_vectors_0.words
-    vectors = word_vectors_0.dict
-
-    hyponyms_all = Hyponyms(f"data/hyponyms/depth_25/hyps_depth_{depth}.json", unique_words, depth=depth)
-    word_vectors = DenseHyponymMatrices(hyponyms=hyponyms_all, embedding_vectors=vectors)
-
-    word_vectors.flatten()
-    word_vectors.to_csv(data_path)
-
-
 def ks_test_policy_all(policy: Policy, policy_name: str):
     subsets = ("sv", "vo", "svo")
 
@@ -447,15 +511,8 @@ def test_policy(policy: Policy, policy_name: str):
     print(f"1 and 5: k_e {k_e_res4} k_a {k_a_res4}")
 
 
-def depth_shifting():
-    depths = [1, 2, 4, 6, 8, 10, 12, 15, 20]
-
-    for depth in depths:
-        test_depth(f"data/word_sims_vectors/how_depth_affects_glove_25/depth_{depth}.csv", depth=depth)
-
-
 def test_policy_all(policy: Policy, policy_name: str) -> None:
-    ks_test_policy_all(policy=policy, policy_name=policy_name)
+    # ks_test_policy_all(policy=policy, policy_name=policy_name)
 
     snli_data_loader = SNLI_DataLoader_Unclean(f"data/snli_1.0/snli_1.0_test.jsonl")
     mnli_data_loader = SNLI_DataLoader_Unclean(f"data/mnli/multinli_1.0/multinli_1.0_dev_matched.jsonl")
@@ -469,6 +526,4 @@ if __name__ == "__main__":
     policy1 = example_policy()
     policy_name1 = "example_policy"
 
-    test_policy(policy1, policy_name1)
-
-
+    test_policy_all(policy1, policy_name1)

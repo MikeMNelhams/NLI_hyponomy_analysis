@@ -304,7 +304,7 @@ class EntailmentModelBatch:
                 masks[mask_idx] = self.__pad_tensor(masks[mask_idx], max_pad=max_pad, pad_value=0)
 
         else:
-            paddings = tuple([sentence.shape[1] for sentence in sentences])
+            paddings = tuple(sentence.shape[1] for sentence in sentences)
             longest_sentence_index = int(np.argmax(paddings))
             max_pad = paddings[longest_sentence_index]
 

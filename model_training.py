@@ -45,7 +45,7 @@ def main():
                          patience=10, early_stopping_mode="minimum", device='cuda', num_layers=num_layers)
 
     mike_net = StaticEntailmentNet(word_vectors_0, train_loader,
-                                   file_path=f'data/models/lstm_200/glove_finalTEST_model_3_layers_sequential2_l2_{l2_str}.pth',
+                                   file_path=f'data/models/lstm_200/glove_final_model_3_layers_sequential2_l2_{l2_str}.pth',
                                    hyper_parameters=params, classifier_model=LSTM,
                                    validation_data_loader=validation_loader)
     mike_net.count_parameters()

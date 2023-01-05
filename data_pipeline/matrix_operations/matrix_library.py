@@ -1,3 +1,4 @@
+# Standard library imports
 import math
 import numpy as np
 from scipy.linalg import sqrtm
@@ -140,7 +141,7 @@ def hadamard_product(a: np.array, b: np.array) -> np.array:
 
 
 def main():
-    pass
+    print("This is a library file, do not run as main.")
 
 
 if __name__ == "__main__":

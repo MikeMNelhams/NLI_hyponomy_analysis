@@ -1,11 +1,14 @@
-from enum import Enum
-
+# Standard library imports
 import random
 import numpy as np
 import scipy.special
 import sklearn.metrics as metrics
 
+# Custom library imports
 from NLI_hyponomy_analysis.data_pipeline.matrix_operations import matrix_library as matrix
+
+# Typing imports
+from enum import Enum
 
 
 class InvalidPhraseType(Exception):
@@ -425,3 +428,11 @@ def mmult1(a: np.array, b: np.array) -> np.array:
 
 def mmult2(a: np.array, b: np.array) -> np.array:
     return matrix.projection(b, a)
+
+
+def main():
+    print("This is a library file, do not run as main.")
+
+
+if __name__ == "__main__":
+    main()
