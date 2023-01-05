@@ -229,7 +229,7 @@ class EntailmentModelBatch:
         return None
 
     def append_to_file(self, file_path: str) -> None:
-        with open(file_path, "a", newline='') as out_file:
+        with open(file_path, "a", newline='', encoding="utf-8") as out_file:
             writer = csv.writer(out_file)
 
             writer.writerows(self.data)

@@ -251,7 +251,7 @@ def pos_tag_sentence(sentence: str) -> str:
     """Creates a flat sentence POS tagged"""
     cleaned_sentence = WordParser.default_clean()(sentence)
     tagged_sentence = tree_tagger.tag(cleaned_sentence.split(' '))
-    tagged_sentence = [f"({string_pair[0]} {string_pair[1]})" for string_pair in tagged_sentence]
+    tagged_sentence = [f"({string_pair[1]} {string_pair[0]})" for string_pair in tagged_sentence]
     tagged_sentence = '(ROOT ' + ' '.join(tagged_sentence) + ' (. .))'
     return tagged_sentence
 

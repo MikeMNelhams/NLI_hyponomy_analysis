@@ -11,17 +11,18 @@ import NLI_hyponomy_analysis.data_pipeline.file_operations as file_op
 import NLI_hyponomy_analysis.data_pipeline.word_operations as word_op
 import NLI_hyponomy_analysis.data_pipeline.matrix_operations.hyponymy_library as hl
 from NLI_hyponomy_analysis.data_pipeline import embeddings_library as embed
-from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch
+from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader_Unclean, SentenceBatch, EntailmentModelBatch
 from NLI_hyponomy_analysis.data_pipeline.hyponyms import DenseHyponymMatrices, Hyponyms
 from NLI_hyponomy_analysis.comp_analysis_library.parse_tree import ParseTree
 from NLI_hyponomy_analysis.comp_analysis_library.policies import Policy, only_addition, only_mult, verbs_switch, comp_policy1, example_policy, example_policy_no_scaling
+import NLI_hyponomy_analysis.data_pipeline.matrix_operations.geometry_library as geometry
 
 # Typing imports
 from typing import Any, List
 
 # Constants
 label_mapping = {"t": 1, "entailment": 1, "neutral": 0.5, "f": 0, "contradiction": 0, '-': 0.5}
-label_mapping_multi_class = {"contradiction": 0, "neutral": 1, "entailment": 2}
+label_mapping_multi_class = {"contradiction": 2, "neutral": 1, "entailment": 0}
 label_mapping_multi_class_vectors = {"entailment": [0, 0, 1], "neutral": [0, 1, 0], "contradiction": [1, 0, 0]}
 k_bounds = {"k_e": (0, 1), "k_a": (-1, 1)}
 
@@ -90,7 +91,7 @@ def plot_auc_curve_multi_macro_average(dir_path: str, policy_name: str) -> None:
 
     plot_roc_curves(roc_curves_k_e, f"ROC Curve for $k_E$ with policy \'{policy_name}\'",
                     fig_save_path + "_k_e.png", class_names=["macro average ROC"])
-    plot_roc_curves(roc_curves_k_a, f"ROC Curve for $k_{{AB}}$ with policy {policy_name}",
+    plot_roc_curves(roc_curves_k_a, f"ROC Curve for $k_{{AB}}$ with policy \'{policy_name}\'",
                     fig_save_path + "_k_a.png", class_names=["macro average ROC"])
 
     return None
@@ -98,8 +99,11 @@ def plot_auc_curve_multi_macro_average(dir_path: str, policy_name: str) -> None:
 
 def plot_roc_curves(roc_curves, title, fig_save_path: str, class_names=("contradiction", "neutral", "entailment")) -> None:
     for i, curve_pair in enumerate(roc_curves):
-        plt.plot(curve_pair[0], curve_pair[1], label=class_names[i])
-
+        curve = np.array((curve_pair[0], curve_pair[1])).T
+        auc = auc_from_curve(curve)
+        plt.plot(curve_pair[0], curve_pair[1], label=f"{class_names[i]} - AUC {auc}", linestyle="dashed")
+        plt.scatter(curve[:, 0], curve[:, 1], color='black', marker='x')
+    plt.plot((0, 1), (0, 1), label="random classifier", linestyle=(0, (5, 10)), color="grey")
     plt.title(title, fontsize=15)
     plt.ylabel("True Positive Rate", fontsize=14)
     plt.xlabel("False Positive Rate", fontsize=14)
@@ -109,6 +113,18 @@ def plot_roc_curves(roc_curves, title, fig_save_path: str, class_names=("contrad
     return None
 
 
+def auc_from_curve(curve: np.array) -> float:
+    previous_point = (0, 0)
+    bottom_right_corner = (1, 0)
+    total_area = 0
+    for point in curve:
+        area = geometry.area_of_triangle(previous_point, point, bottom_right_corner)
+        total_area += area
+        previous_point = point
+    return total_area
+
+
+# OTHER
 def make_k_file(data_file_path_k: str) -> None:
     dir_path = file_op.parent_path(data_file_path_k) + '/'
     file_op.make_dir(dir_path=dir_path)
@@ -289,10 +305,21 @@ def auc_multi_class(predictions_input, metric: str, num_steps: int=10) -> List[n
 
 
 def roc_corner_points(fpr: np.array, tpr: np.array) -> (np.array, np.array):
-    # Taken straight from the documentation. Uses second derivative to find corner points.
-    optimal_idxs = np.where(np.r_[True,
-                                  np.logical_or(np.diff(fpr, 2), np.diff(tpr, 2)),
-                                  True])[0]
+    # Taken straight from the documentation. Uses second derivative to find corner points. (Strictly increasing f'(x))
+
+    # Sort by y then x
+    all_points = np.array((fpr, tpr)).T
+
+    all_points = all_points[all_points[:, 1].argsort()]
+    all_points = all_points[all_points[:, 0].argsort()]
+
+    optimal_idxs = [0 for _ in range(all_points.shape[0])]
+    x_max, y_max = 0, 0
+    for i in range(all_points.shape[0]):
+        x, y = all_points[i, 0], all_points[i, 1]
+        if x >= x_max and y >= y_max:
+            optimal_idxs[i] = 1
+        x_max, y_max = x, y
 
     fpr_corners = fpr[optimal_idxs]
     tpr_corners = tpr[optimal_idxs]
@@ -338,18 +365,18 @@ def ks_stats(data_loader, word_vectors, policy, tags, batch_size: int=256):
     return k_e, k_a
 
 
-def __batch_stats(batch, word_vectors, policy: Policy, constructor=ParseTree):
-    batch_1 = [sentence[0] for sentence in batch]
+def __batch_stats(entailment_model_batch: EntailmentModelBatch, word_vectors, policy: Policy, constructor=ParseTree):
+    batch_1 = [sentence[0] for sentence in entailment_model_batch]
     batch_1 = [constructor(word_op.remove_utf8_bad_chars(sentence), word_vectors, policy) for sentence in batch_1]
     for parse_tree in batch_1:
         parse_tree.evaluate()
 
-    batch_2 = [sentence[1] for sentence in batch]
+    batch_2 = [sentence[1] for sentence in entailment_model_batch]
     batch_2 = [constructor(word_op.remove_utf8_bad_chars(sentence), word_vectors, policy) for sentence in batch_2]
     for parse_tree in batch_2:
         parse_tree.evaluate()
 
-    labels = [sentence[2] for sentence in batch]
+    labels = [sentence[2] for sentence in entailment_model_batch]
 
     k_e = [[k_e_from_two_trees(tree1, tree2), label]
            for tree1, tree2, label in zip(batch_1, batch_2, labels)]
@@ -374,8 +401,6 @@ def get_word_vectors(unique_words: List[str]) -> DenseHyponymMatrices:
 def nli_test_policy(data_loader: SNLI_DataLoader_Unclean, data_name: str, policy: Policy, policy_name, batch_size: int=256):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
 
-    word_vectors = get_word_vectors(data_loader.unique_words)
-
     data_file_path_k_e = f"data/compositional_analysis/{policy_name}/{data_name}/k_e.csv"
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"), delimiter=',')
 
@@ -394,6 +419,8 @@ def nli_test_policy(data_loader: SNLI_DataLoader_Unclean, data_name: str, policy
 
     batch_sizes = [batch_size for _ in range(num_iters)] + [last_batch_size]
 
+    word_vectors = get_word_vectors(data_loader.unique_words)
+
     for batch_size in batch_sizes:
         k_e, k_a = snli_stats(data_loader, word_vectors, policy, batch_size)
         data_writer_k_e.append_lines(k_e)
@@ -409,13 +436,6 @@ def ks_test_policy(data_path: str, policy: Policy, policy_name: str, batch_size=
     ks_type_to_tags = {"sv": ('n', 'v'), "vo": ('v', 'n'), "svo": ('n', 'v', 'n')}
     tags = ks_type_to_tags[ks_type]
 
-    data_loader = file_op.CSV_Writer(data_path, delimiter=',')
-
-    sentences = data_loader.load_all()
-    sentences0 = SentenceBatch([' '.join(sentence[0:1]).lower() for sentence in sentences])
-
-    word_vectors = get_word_vectors(sentences0.unique_words)
-
     data_file_path_k_e = f"data/compositional_analysis/{policy_name}/KS2016/{ks_type}/k_e.csv"
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"), delimiter=',')
 
@@ -425,6 +445,13 @@ def ks_test_policy(data_path: str, policy: Policy, policy_name: str, batch_size=
     if data_writer_k_e.file_exists and data_writer_k_a.file_exists:
         plot_stats_single(f"data/compositional_analysis/{policy_name}/KS2016/{ks_type}/", policy_name)
         return None
+
+    data_loader = file_op.CSV_Writer(data_path, delimiter=',')
+
+    sentences = data_loader.load_all()
+    sentences0 = SentenceBatch([' '.join(sentence[0:1]).lower() for sentence in sentences])
+
+    word_vectors = get_word_vectors(sentences0.unique_words)
 
     make_k_file(data_file_path_k_e)
     make_k_file(data_file_path_k_a)
@@ -449,7 +476,18 @@ def ks_test_policy_all(policy: Policy, policy_name: str):
         ks_test_policy(f"data/KS2016/KS2016-{subset.upper()}.csv", policy, policy_name)
 
 
-def sick_test_policy_all(policy: Policy, policy_name: str, batch_size: int=256):
+def sick_test_policy_all(policy: Policy, policy_name: str):
+    load_dotenv()  # Path to the glove data directory -> HOME="..."
+    data_file_path_k_e = f"data/compositional_analysis/{policy_name}/SICK/k_e.csv"
+    data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"), delimiter=',')
+
+    data_file_path_k_a = f"data/compositional_analysis/{policy_name}/SICK/k_a.csv"
+    data_writer_k_a = file_op.CSV_Writer(data_file_path_k_a, header=("k_a", "label"), delimiter=',')
+
+    if data_writer_k_e.file_exists and data_writer_k_a.file_exists:
+        plot_stats_multi(f"data/compositional_analysis/{policy_name}/SICK/", policy_name)
+        return None
+
     data_loader = file_op.CSV_Writer(f"data/SICK/SICK_annotated.csv", delimiter='\t', header="$auto")
     data_all = data_loader.load_as_dataframe()
     data_all_labels = data_all["entailment_label"]
@@ -457,11 +495,34 @@ def sick_test_policy_all(policy: Policy, policy_name: str, batch_size: int=256):
     data_train = data_all[data_all["SemEval_set"] == "TRAIN"]
     # data_test = data_all[data_all["SemEval_set"] == "TEST"]
 
-    sentences = data_train["sentence_A"].values.tolist()
-    sentences = [word_op.pos_tag_sentence(sentence) for sentence in sentences]
-    sentences0 = SentenceBatch(sentences)
-    print(sentences0[0])
+    labels = data_train["entailment_label"].values.tolist()
+    labels = [label.lower() for label in labels]
 
+    sentences1 = data_train["sentence_A"].values.tolist()
+    sentences2 = data_train["sentence_B"].values.tolist()
+
+    max_length = int(file_op.TextWriterSingleLine("data/SICK/max_len.txt").load())
+
+    unique_words1 = SentenceBatch(sentences1).unique_words
+    unique_words2 = SentenceBatch(sentences2).unique_words
+
+    unique_words_all = list(set(unique_words1) | set(unique_words2))
+
+    word_vectors = get_word_vectors(unique_words_all)
+
+    sentence_batch1 = SentenceBatch([word_op.pos_tag_sentence(sentence) for sentence in sentences1])
+    sentence_batch2 = SentenceBatch([word_op.pos_tag_sentence(sentence) for sentence in sentences2])
+
+    make_k_file(data_file_path_k_e)
+    make_k_file(data_file_path_k_a)
+
+    data_batch = EntailmentModelBatch(sentence_batch1, sentence_batch2, labels, max_length)
+    k_e, k_a = __batch_stats(data_batch, word_vectors, policy)
+
+    data_writer_k_e.append_lines(k_e)
+    data_writer_k_a.append_lines(k_a)
+
+    plot_stats_multi(f"data/compositional_analysis/{policy_name}/SICK/", policy_name)
     return None
 
 
@@ -514,19 +575,23 @@ def test_policy(policy: Policy, policy_name: str):
     print(f"1 and 5: k_e {k_e_res4} k_a {k_a_res4}")
 
 
-def test_policy_all(policy: Policy, policy_name: str) -> None:
-    # ks_test_policy_all(policy=policy, policy_name=policy_name)
-    #
+def test_policy_all(policy: Policy, policy_name: str=None) -> None:
+    policy_name_input = policy_name
+    if policy_name is None:
+        policy_name_input = policy.__name__
+
+    policy_input = policy()
+
+    ks_test_policy_all(policy=policy_input, policy_name=policy_name_input)
     snli_data_loader = SNLI_DataLoader_Unclean(f"data/snli_1.0/snli_1.0_test.jsonl")
-    # mnli_data_loader = SNLI_DataLoader_Unclean(f"data/mnli/multinli_1.0/multinli_1.0_dev_matched.jsonl")
-    # nli_test_policy(snli_data_loader, "SNLI", policy, policy_name)
-    # nli_test_policy(mnli_data_loader, "MNLI", policy, policy_name)
-    # sick_test_policy_all(policy=policy, policy_name=policy_name)
+    mnli_data_loader = SNLI_DataLoader_Unclean(f"data/mnli/multinli_1.0/multinli_1.0_dev_matched.jsonl")
+    nli_test_policy(snli_data_loader, "SNLI", policy_input, policy_name_input)
+    nli_test_policy(mnli_data_loader, "MNLI", policy_input, policy_name_input)
+    sick_test_policy_all(policy=policy_input, policy_name=policy_name_input)
 
 
 if __name__ == "__main__":
     # test_policy(comp_policy1(), policy_name="comp_policy")
-    policy1 = example_policy()
-    policy_name1 = "example_policy"
+    policy1 = only_addition
 
-    test_policy_all(policy1, policy_name1)
+    test_policy_all(policy1)
