@@ -26,6 +26,89 @@ label_mapping_multi_class_vectors = {"entailment": [0, 0, 1], "neutral": [0, 1, 
 k_bounds = {"k_e": (0, 1), "k_a": (-1, 1)}
 
 
+# PLOTTING
+def plot_stats_single(plot_dir: str, policy_name) -> None:
+    assert plot_dir[-1] == "/", TypeError
+    plot_auc_curve_single(plot_dir, policy_name)
+
+    k_e_path = plot_dir + 'k_e.csv'
+    k_a_path = plot_dir + 'k_a.csv'
+    scatter(k_e_path, fig_type="k_e")
+    scatter(k_a_path, fig_type="k_a")
+    return None
+
+
+def plot_stats_multi(plot_dir: str, policy_name) -> None:
+    assert plot_dir[-1] == "/", TypeError
+
+    k_e_path = plot_dir + 'k_e.csv'
+    k_a_path = plot_dir + 'k_a.csv'
+    scatter(k_e_path, fig_type="k_e")
+    scatter(k_a_path, fig_type="k_a")
+
+    plot_auc_curve_multi_macro_average(plot_dir, policy_name)
+    return None
+
+
+def plot_auc_curve_single(dir_path: str, policy_name: str) -> None:
+    fig_save_path = dir_path + "AUC.png"
+    k_e_path = dir_path + "k_e.csv"
+    k_a_path = dir_path + "k_a.csv"
+
+    k_e_predictions = load_predictions(k_e_path)
+    k_a_predictions = load_predictions(k_a_path)
+
+    dataset_name = file_op.parent_path_name(k_e_path)
+    if dataset_name.lower() in ("sv", "svo", "vo"):
+        dataset_name = file_op.parent_path_name(file_op.parent_path(k_e_path)) + ' - ' + dataset_name.upper()
+
+    print('-' * 50)
+    print(f"Saving graph to {fig_save_path}")
+    print('-' * 50)
+    fig, axes = auc_graph_single_class(k_e_predictions, fig_save_path, policy_name, dataset_name=dataset_name, legend_data_name="k_e")
+    auc_graph_single_class(k_a_predictions, fig_save_path, policy_name, dataset_name=dataset_name,
+                           legend_data_name="k_a", fig=fig, axes=axes, linestyle='dashdot', save=True)
+    return None
+
+
+def plot_auc_curve_multi_macro_average(dir_path: str, policy_name: str) -> None:
+    fig_save_path = dir_path + "multi_macro_AUC"
+    k_e_path = dir_path + "k_e.csv"
+    k_a_path = dir_path + "k_a.csv"
+
+    k_e_predictions = load_predictions(k_e_path)
+    k_a_predictions = load_predictions(k_a_path)
+
+    roc_points_k_e = auc_multi_class(k_e_predictions, "k_e")
+    roc_points_k_a = auc_multi_class(k_a_predictions, "k_a")
+
+    roc_points_k_e = roc_macro_average_classes(roc_points_k_e)
+    roc_points_k_a = roc_macro_average_classes(roc_points_k_a)
+
+    roc_curves_k_e = roc_scatter_to_roc_curve(roc_points_k_e)
+    roc_curves_k_a = roc_scatter_to_roc_curve(roc_points_k_a)
+
+    plot_roc_curves(roc_curves_k_e, f"ROC Curve for $k_E$ with policy \'{policy_name}\'",
+                    fig_save_path + "_k_e.png", class_names=["macro average ROC"])
+    plot_roc_curves(roc_curves_k_a, f"ROC Curve for $k_{{AB}}$ with policy {policy_name}",
+                    fig_save_path + "_k_a.png", class_names=["macro average ROC"])
+
+    return None
+
+
+def plot_roc_curves(roc_curves, title, fig_save_path: str, class_names=("contradiction", "neutral", "entailment")) -> None:
+    for i, curve_pair in enumerate(roc_curves):
+        plt.plot(curve_pair[0], curve_pair[1], label=class_names[i])
+
+    plt.title(title, fontsize=15)
+    plt.ylabel("True Positive Rate", fontsize=14)
+    plt.xlabel("False Positive Rate", fontsize=14)
+    plt.legend()
+    plt.savefig(fig_save_path)
+    plt.close()
+    return None
+
+
 def make_k_file(data_file_path_k: str) -> None:
     dir_path = file_op.parent_path(data_file_path_k) + '/'
     file_op.make_dir(dir_path=dir_path)
@@ -122,65 +205,6 @@ def auc_graph_single_class(data, figure_save_path: str, policy_name: str, legend
         plt.close()
 
     return fig_plot, ax_plot
-
-
-def plot_auc_curve_single(dir_path: str, policy_name: str) -> None:
-    fig_save_path = dir_path + "AUC.png"
-    k_e_path = dir_path + "k_e.csv"
-    k_a_path = dir_path + "k_a.csv"
-
-    k_e_predictions = load_predictions(k_e_path)
-    k_a_predictions = load_predictions(k_a_path)
-
-    dataset_name = file_op.parent_path_name(k_e_path)
-    if dataset_name.lower() in ("sv", "svo", "vo"):
-        dataset_name = file_op.parent_path_name(file_op.parent_path(k_e_path)) + ' - ' + dataset_name.upper()
-
-    print('-' * 50)
-    print(f"Saving graph to {fig_save_path}")
-    print('-' * 50)
-    fig, axes = auc_graph_single_class(k_e_predictions, fig_save_path, policy_name, dataset_name=dataset_name, legend_data_name="k_e")
-    auc_graph_single_class(k_a_predictions, fig_save_path, policy_name, dataset_name=dataset_name,
-                           legend_data_name="k_a", fig=fig, axes=axes, linestyle='dashdot', save=True)
-    return None
-
-
-def plot_auc_curve_multi_macro_average(dir_path: str, policy_name: str) -> None:
-    fig_save_path = dir_path + "multi_macro_AUC"
-    k_e_path = dir_path + "k_e.csv"
-    k_a_path = dir_path + "k_a.csv"
-
-    k_e_predictions = load_predictions(k_e_path)
-    k_a_predictions = load_predictions(k_a_path)
-
-    roc_points_k_e = auc_multi_class(k_e_predictions, "k_e")
-    roc_points_k_a = auc_multi_class(k_a_predictions, "k_a")
-
-    roc_points_k_e = roc_macro_average_classes(roc_points_k_e)
-    roc_points_k_a = roc_macro_average_classes(roc_points_k_a)
-
-    roc_curves_k_e = roc_scatter_to_roc_curve(roc_points_k_e)
-    roc_curves_k_a = roc_scatter_to_roc_curve(roc_points_k_a)
-
-    plot_roc_curves(roc_curves_k_e, f"ROC Curve for $k_E$ with policy \'{policy_name}\'",
-                    fig_save_path + "_k_e.png", class_names=["macro average ROC"])
-    plot_roc_curves(roc_curves_k_a, f"ROC Curve for $k_{{AB}}$ with policy {policy_name}",
-                    fig_save_path + "_k_a.png", class_names=["macro average ROC"])
-
-    return None
-
-
-def plot_roc_curves(roc_curves, title, fig_save_path: str, class_names=("contradiction", "neutral", "entailment")) -> None:
-    for i, curve_pair in enumerate(roc_curves):
-        plt.plot(curve_pair[0], curve_pair[1], label=class_names[i])
-
-    plt.title(title, fontsize=15)
-    plt.ylabel("True Positive Rate", fontsize=14)
-    plt.xlabel("False Positive Rate", fontsize=14)
-    plt.legend()
-    plt.savefig(fig_save_path)
-    plt.close()
-    return None
 
 
 def roc_macro_average_classes(roc_points: np.array) -> np.array:
@@ -280,29 +304,6 @@ def roc_corner_points(fpr: np.array, tpr: np.array) -> (np.array, np.array):
     return fpr_corners, tpr_corners
 
 
-def plot_stats_single(plot_dir: str, policy_name) -> None:
-    assert plot_dir[-1] == "/", TypeError
-    plot_auc_curve_single(plot_dir, policy_name)
-
-    k_e_path = plot_dir + 'k_e.csv'
-    k_a_path = plot_dir + 'k_a.csv'
-    scatter(k_e_path, fig_type="k_e")
-    scatter(k_a_path, fig_type="k_a")
-    return None
-
-
-def plot_stats_multi(plot_dir: str, policy_name) -> None:
-    assert plot_dir[-1] == "/", TypeError
-
-    k_e_path = plot_dir + 'k_e.csv'
-    k_a_path = plot_dir + 'k_a.csv'
-    scatter(k_e_path, fig_type="k_e")
-    scatter(k_a_path, fig_type="k_a")
-
-    plot_auc_curve_multi_macro_average(plot_dir, policy_name)
-    return None
-
-
 def k_e_from_two_trees(tree1: ParseTree, tree2: ParseTree) -> float:
     return tree1.metric(tree2, binary_metric=hl.k_e)
 
@@ -360,16 +361,20 @@ def __batch_stats(batch, word_vectors, policy: Policy, constructor=ParseTree):
     return k_e, k_a
 
 
+def get_word_vectors(unique_words: List[str]) -> DenseHyponymMatrices:
+    word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
+    word_vectors_0.load_memory()
+    word_vectors_0.remove_all_except(unique_words)
+
+    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", unique_words)
+    word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
+    return word_vectors
+
+
 def nli_test_policy(data_loader: SNLI_DataLoader_Unclean, data_name: str, policy: Policy, policy_name, batch_size: int=256):
     load_dotenv()  # Path to the glove data directory -> HOME="..."
 
-    word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
-    word_vectors_0.load_memory()
-    word_vectors_0.remove_all_except(data_loader.unique_words)
-
-    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", data_loader.unique_words)
-
-    word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
+    word_vectors = get_word_vectors(data_loader.unique_words)
 
     data_file_path_k_e = f"data/compositional_analysis/{policy_name}/{data_name}/k_e.csv"
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"), delimiter=',')
@@ -409,13 +414,7 @@ def ks_test_policy(data_path: str, policy: Policy, policy_name: str, batch_size=
     sentences = data_loader.load_all()
     sentences0 = SentenceBatch([' '.join(sentence[0:1]).lower() for sentence in sentences])
 
-    word_vectors_0 = embed.Embedding2('twitter', d_emb=25, show_progress=True, default='zero')
-    word_vectors_0.load_memory()
-    word_vectors_0.remove_all_except(sentences0.unique_words)
-
-    hyponyms = Hyponyms("data/hyponyms/25d_hyponyms_all.json", sentences0.unique_words)
-
-    word_vectors = DenseHyponymMatrices(hyponyms, word_vectors_0.dict)
+    word_vectors = get_word_vectors(sentences0.unique_words)
 
     data_file_path_k_e = f"data/compositional_analysis/{policy_name}/KS2016/{ks_type}/k_e.csv"
     data_writer_k_e = file_op.CSV_Writer(data_file_path_k_e, header=("k_e", "label"), delimiter=',')
@@ -450,16 +449,20 @@ def ks_test_policy_all(policy: Policy, policy_name: str):
         ks_test_policy(f"data/KS2016/KS2016-{subset.upper()}.csv", policy, policy_name)
 
 
-def sick_test_policy_all(policy: Policy, policy_name: str):
+def sick_test_policy_all(policy: Policy, policy_name: str, batch_size: int=256):
     data_loader = file_op.CSV_Writer(f"data/SICK/SICK_annotated.csv", delimiter='\t', header="$auto")
     data_all = data_loader.load_as_dataframe()
     data_all_labels = data_all["entailment_label"]
 
     data_train = data_all[data_all["SemEval_set"] == "TRAIN"]
-    data_test = data_all[data_all["SemEval_set"] == "TEST"]
-    print(data_all.columns)
+    # data_test = data_all[data_all["SemEval_set"] == "TEST"]
 
-    # sick_test_policy(data_loader, )
+    sentences = data_train["sentence_A"].values.tolist()
+    sentences = [word_op.pos_tag_sentence(sentence) for sentence in sentences]
+    sentences0 = SentenceBatch(sentences)
+    print(sentences0[0])
+
+    return None
 
 
 def test_policy(policy: Policy, policy_name: str):
@@ -513,11 +516,11 @@ def test_policy(policy: Policy, policy_name: str):
 
 def test_policy_all(policy: Policy, policy_name: str) -> None:
     # ks_test_policy_all(policy=policy, policy_name=policy_name)
-
+    #
     snli_data_loader = SNLI_DataLoader_Unclean(f"data/snli_1.0/snli_1.0_test.jsonl")
-    mnli_data_loader = SNLI_DataLoader_Unclean(f"data/mnli/multinli_1.0/multinli_1.0_dev_matched.jsonl")
-    nli_test_policy(snli_data_loader, "SNLI", policy, policy_name)
-    nli_test_policy(mnli_data_loader, "MNLI", policy, policy_name)
+    # mnli_data_loader = SNLI_DataLoader_Unclean(f"data/mnli/multinli_1.0/multinli_1.0_dev_matched.jsonl")
+    # nli_test_policy(snli_data_loader, "SNLI", policy, policy_name)
+    # nli_test_policy(mnli_data_loader, "MNLI", policy, policy_name)
     # sick_test_policy_all(policy=policy, policy_name=policy_name)
 
 

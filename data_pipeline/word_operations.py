@@ -3,15 +3,15 @@ from typing import List
 
 import re
 from nltk.stem import WordNetLemmatizer
+from nltk.corpus import treebank
+from nltk.tag import UnigramTagger
 import itertools
 
-
+# Constants and models
+tree_tagger = UnigramTagger(treebank.tagged_sents()[:2500])
 label_mapping = {"f": "contradiction", "t": "entailment", "-": "unknown",
                  "contradiction": "contradiction", "entailment": "entailment", "neutral": "neutral"}
-
 bad_chars = ['\u00a0']
-
-
 pos_tags = {"ROOT", "(", ")", ".", "CC", "CD", "DT", "EX", "IN", "JJ", "JJR", "JJS", "LS", "MD", "NN",
             "NNP", "NNS", "NP", "PP", "PDT", "POS", "PRP", "PRP$", "RB", "RBR", "RBS", "RP", "S", "TO",
             "UH", "VB", "VP", "VBD", "VBG", "VBN", "VBP", "VBZ", "WDT", "WP", "WRB", "FRAG", "ADJP", "ADVP",
@@ -245,6 +245,15 @@ def lemmatise_sentence_pos_tag(sentence: str) -> str:
     words = [f"{part[0].upper()} {lemmatise(part[1], part[0])}" for part in pos]
     lemmatised_sentence = ''.join(interleave(remaining, words))
     return lemmatised_sentence
+
+
+def pos_tag_sentence(sentence: str) -> str:
+    """Creates a flat sentence POS tagged"""
+    cleaned_sentence = WordParser.default_clean()(sentence)
+    tagged_sentence = tree_tagger.tag(cleaned_sentence.split(' '))
+    tagged_sentence = [f"({string_pair[0]} {string_pair[1]})" for string_pair in tagged_sentence]
+    tagged_sentence = '(ROOT ' + ' '.join(tagged_sentence) + ' (. .))'
+    return tagged_sentence
 
 
 class InvalidProcessingMode(Exception):
