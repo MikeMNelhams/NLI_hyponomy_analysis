@@ -15,3 +15,6 @@
 *.zip
 
 *.prof
+/data/mnli/BACKUP/multinli_1.0/Icon_
+/data/mnli/multinli_1.0/Icon_
+/data/snli_1.0/Icon_
