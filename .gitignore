@@ -1,0 +1,12 @@
+*.csv
+*.txt
+*.json
+*.jsonl
+*.png
+*.ai
+*.xml
+*.iml
+*.pth
+*.drawio
+*.zip
+/data/snli_1.0/Icon_
