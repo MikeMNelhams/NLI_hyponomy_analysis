@@ -3,7 +3,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+<<<<<<< Updated upstream
 from NLI_hyponomy_analysis.data_pipeline.NLI_data_handling import SNLI_DataLoader
+=======
+from data_pipeline.SNLI_data_handling import SNLI_DataLoader
+>>>>>>> Stashed changes
 
 
 # CODE FROM: https://www.youtube.com/watch?v=U0s0f995w14&t=2494s
